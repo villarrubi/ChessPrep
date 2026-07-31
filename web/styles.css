@@ -134,8 +134,8 @@ svg { width: 1.2em; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-
 .title-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 29px; height: 19px; padding: 0 5px; border-radius: 4px; background: var(--terracotta); color: white; font-size: 9px; line-height: 1; font-weight: 900; letter-spacing: .5px; }
 .rating-mini { margin-left: auto; font-family: var(--serif); font-size: 18px; }
 .mini-board-wrap { width: 270px; height: 245px; margin: 3px auto 0; position: relative; }
-.mini-board { width: 212px; height: 212px; display: grid; grid-template-columns: repeat(8, 1fr); border: 4px solid #e2d8bd; box-shadow: 0 14px 30px rgba(0,0,0,.25); transform: rotate(-2deg); overflow: hidden; }
-.mini-square { display: grid; place-items: center; background: #e5d7b9; color: #14211d; font-family: "Segoe UI Symbol", serif; font-size: 19px; line-height: 1; }
+.mini-board { width: 212px; height: 212px; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); grid-template-rows: repeat(8, minmax(0, 1fr)); border: 4px solid #e2d8bd; box-shadow: 0 14px 30px rgba(0,0,0,.25); transform: rotate(-2deg); overflow: hidden; }
+.mini-square { min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; background: #e5d7b9; color: #14211d; font-family: "Segoe UI Symbol", serif; font-size: 19px; line-height: 1; }
 .mini-square.dark { background: #6c847c; }
 .mini-callout { position: absolute; padding: 7px 10px; background: #f7f2e6; color: var(--ink); border-radius: 5px; box-shadow: 0 8px 22px rgba(0,0,0,.2); font-size: 8px; font-weight: 800; white-space: nowrap; }
 .mini-callout span { color: var(--terracotta); margin-right: 5px; }
@@ -289,8 +289,8 @@ footer > p { flex: 1; } footer > div { display: flex; gap: 12px; } footer a:hove
 .viewer-dialog { width: min(1120px, 100%); height: min(760px, calc(100vh - 40px)); max-height: none; padding: 28px; overflow: hidden; display: grid; grid-template-columns: minmax(430px, 1fr) minmax(340px, .72fr); gap: 36px; background: #eeeae0; }
 .viewer-close { z-index: 3; }
 .viewer-board-column { min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.chessboard { width: min(58vh, 100%, 570px); aspect-ratio: 1; display: grid; grid-template-columns: repeat(8,1fr); border: 7px solid var(--forest); box-shadow: 0 16px 35px rgba(16,35,31,.2); }
-.board-square { position: relative; display: grid; place-items: center; background: #e7d9bb; color: #172823; font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", serif; font-size: clamp(28px, 5.2vh, 48px); line-height: 1; user-select: none; }
+.chessboard { width: min(58vh, 100%, 570px); aspect-ratio: 1; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); grid-template-rows: repeat(8, minmax(0, 1fr)); border: 7px solid var(--forest); box-shadow: 0 16px 35px rgba(16,35,31,.2); overflow: hidden; }
+.board-square { min-width: 0; min-height: 0; position: relative; display: grid; place-items: center; overflow: hidden; background: #e7d9bb; color: #172823; font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", serif; font-size: clamp(28px, 5.2vh, 48px); line-height: 1; user-select: none; }
 .board-square.dark { background: #708b82; }.board-square.last-move { box-shadow: inset 0 0 0 999px rgba(226,164,60,.4); }.board-square .coord { position: absolute; font-family: var(--sans); font-size: 7px; font-weight: 900; opacity: .7; }.board-square .file { right: 3px; bottom: 2px; }.board-square .rank { left: 3px; top: 2px; }.board-square.dark .coord { color: #e7d9bb; }.board-square:not(.dark) .coord { color: #597269; }
 .board-player { width: min(58vh, 100%, 570px); min-height: 38px; padding: 0 3px; display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 800; }.board-player-top { align-items: start; }.board-player span { color: #7e8782; font-weight: 500; }
 .viewer-info { min-height: 0; padding: 23px; border-radius: 12px; background: var(--paper); display: flex; flex-direction: column; }
@@ -358,4 +358,3 @@ footer > p { flex: 1; } footer > div { display: flex; gap: 12px; } footer a:hove
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
-
