@@ -5,13 +5,15 @@ const state = {
   player: null,
   stats: null,
   games: [],
-  mode: "combined",
+  pace: "global",
+  source: "all",
   openingColor: "all",
   selectedEco: null,
   viewerGame: null,
   ply: 0,
   playTimer: null,
   pgnText: "",
+  datasetId: null,
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -55,7 +57,11 @@ function shortRange(range) {
 }
 
 function sourceLabel(source) {
-  return ({ lichess: "Lichess", pgn_import: "PGN", demo: "Muestra", upload: "PGN" })[source] || source;
+  return ({ lichess: "Lichess", "chess.com": "Chess.com", combined: "Lichess + Chess.com", pgn_import: "PGN OTB", demo: "Muestra", upload: "PGN OTB" })[source] || source;
+}
+
+function paceLabel(pace) {
+  return ({ global: "Global", blitz: "Blitz", rapid: "Rápida", classical: "Lenta", bullet: "Bullet" })[pace] || "Sin clasificar";
 }
 
 function countryLabel(country) {
@@ -125,12 +131,13 @@ async function loadPlayer(player, { scroll = false } = {}) {
   try {
     const [detail, stats, games] = await Promise.all([
       api(`/players/${encodeURIComponent(player.source)}/${encodeURIComponent(player.external_id)}`),
-      api(`/players/${encodeURIComponent(player.source)}/${encodeURIComponent(player.external_id)}/stats?mode=${state.mode}`),
-      api(`/players/${encodeURIComponent(player.source)}/${encodeURIComponent(player.external_id)}/games?mode=${state.mode}&page_size=100`),
+      api(`/players/${encodeURIComponent(player.source)}/${encodeURIComponent(player.external_id)}/stats?mode=combined&pace=${state.pace}`),
+      api(`/players/${encodeURIComponent(player.source)}/${encodeURIComponent(player.external_id)}/games?mode=combined&pace=${state.pace}&page_size=250`),
     ]);
     state.player = detail;
     state.stats = stats;
     state.games = games.items;
+    state.datasetId = games.trace?.dataset_id || null;
     state.selectedEco = null;
     renderAll();
     if (scroll) $("#analisis").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -155,17 +162,28 @@ async function searchPlayer(event) {
   event.preventDefault();
   const query = $("#player-query").value.trim();
   if (query.length < 2) {
-    toast("Escribe un usuario", "Usa el nombre exacto de la cuenta de Lichess.", "error");
+    toast("Escribe un usuario", "Usa el nombre exacto de la cuenta en la plataforma elegida.", "error");
     return;
   }
-  setLoading(true, "Buscando al jugador en Lichess…");
+  const selectedSource = state.source;
+  const providerName = selectedSource === "all" ? "Lichess y Chess.com" : sourceLabel(selectedSource);
+  setLoading(true, `Buscando al jugador en ${providerName}…`);
   try {
-    const search = await api(`/players/search?q=${encodeURIComponent(query)}&source=lichess`);
-    if (!search.results.length) throw new Error(search.message || "No encontramos ese usuario exacto.");
-    const player = search.results[0];
-    if (player.source === "lichess") {
-      setLoading(true, "Recopilando sus partidas públicas…");
-      await api(`/players/lichess/${encodeURIComponent(player.external_id)}/refresh-games?max_games=30`, { method: "POST" });
+    let player;
+    if (selectedSource === "all") {
+      setLoading(true, "Combinando sus partidas de las dos plataformas…");
+      const combined = await api("/players/combined?max_games=100", {
+        method: "POST",
+        body: JSON.stringify({ lichess_username: query, chesscom_username: query }),
+      });
+      player = combined.dataset.player;
+      if (combined.warnings.length) toast("Dossier creado con avisos", combined.warnings.join(" "));
+    } else {
+      const search = await api(`/players/search?q=${encodeURIComponent(query)}&source=${encodeURIComponent(selectedSource)}`);
+      if (!search.results.length) throw new Error(search.message || "No encontramos ese usuario exacto.");
+      player = search.results.find((item) => item.source === selectedSource) || search.results[0];
+      setLoading(true, `Recopilando sus partidas de ${sourceLabel(player.source)}…`);
+      await api(`/players/${encodeURIComponent(player.source)}/${encodeURIComponent(player.external_id)}/refresh-games?max_games=100`, { method: "POST" });
     }
     await loadPlayer(player, { scroll: true });
     toast("Dossier actualizado", `${player.display_name}: ${state.games.length} partidas disponibles.`);
@@ -175,23 +193,23 @@ async function searchPlayer(event) {
   }
 }
 
-async function switchMode(mode) {
-  if (!state.player || state.mode === mode) return;
-  state.mode = mode;
-  $$("[data-mode]").forEach((button) => button.classList.toggle("active", button.dataset.mode === mode));
-  setLoading(true, `Filtrando partidas ${mode === "combined" ? "combinadas" : mode.toUpperCase()}…`);
+async function switchPace(pace) {
+  if (!state.player || state.pace === pace) return;
+  state.pace = pace;
+  $$("[data-pace]").forEach((button) => button.classList.toggle("active", button.dataset.pace === pace));
+  setLoading(true, `Filtrando ritmo ${paceLabel(pace).toLowerCase()}…`);
   try {
     const base = `/players/${encodeURIComponent(state.player.source)}/${encodeURIComponent(state.player.external_id)}`;
     const [stats, games] = await Promise.all([
-      api(`${base}/stats?mode=${mode}`),
-      api(`${base}/games?mode=${mode}&page_size=100`),
+      api(`${base}/stats?mode=combined&pace=${pace}`),
+      api(`${base}/games?mode=combined&pace=${pace}&page_size=250`),
     ]);
     state.stats = stats;
     state.games = games.items;
     state.selectedEco = null;
     renderAll();
   } catch (error) {
-    toast("No se pudo aplicar el modo", error.message, "error");
+    toast("No se pudo aplicar el ritmo", error.message, "error");
   } finally { setLoading(false); }
 }
 
@@ -213,7 +231,7 @@ function renderPlayer() {
   $("#trace-sample").textContent = `${stats.sample_size} ${stats.sample_size === 1 ? "partida" : "partidas"}`;
   $("#trace-range").textContent = shortRange(stats.date_range);
   $("#trace-sources").textContent = stats.sources.map(sourceLabel).join(" + ") || "Sin fuentes";
-  $("#refresh-player").hidden = player.source !== "lichess";
+  $("#refresh-player").hidden = !["lichess", "chess.com"].includes(player.source);
 }
 
 function renderMetrics() {
@@ -269,7 +287,7 @@ function renderColors() {
       <div class="wdl-numbers"><span>${row.wins}V</span><span>${row.draws}T</span><span>${row.losses}D</span></div>
     </div>
   `).join("");
-  $("#sample-note").querySelector("p").innerHTML = `<strong>${state.stats.sample_size} partidas · ${state.mode === "combined" ? "modo combinado" : state.mode.toUpperCase()}</strong> ${shortRange(state.stats.date_range)}. ${state.stats.sources.map(sourceLabel).join(" + ")}.`;
+  $("#sample-note").querySelector("p").innerHTML = `<strong>${state.stats.sample_size} partidas · ritmo ${paceLabel(state.pace).toLowerCase()}</strong> ${shortRange(state.stats.date_range)}. ${state.stats.sources.map(sourceLabel).join(" + ")}.`;
 }
 
 function selectedGames() {
@@ -302,7 +320,7 @@ function renderGames() {
         </div>
         <div class="game-detail game-opening"><span>Apertura</span><strong>${escapeHtml(game.eco || "—")} · ${escapeHtml(game.opening)}</strong></div>
         <div class="game-detail game-event"><span>Evento</span><strong>${escapeHtml(game.event || "Partida importada")}</strong></div>
-        <div class="game-detail game-mode"><span>${game.game_type === "online" ? "Online" : "OTB"}</span><strong>${shortDate(game.date)}</strong></div>
+        <div class="game-detail game-mode"><span>Ritmo</span><strong>${paceLabel(game.time_class)} · ${shortDate(game.date)}</strong></div>
         <button class="game-open" type="button" data-game-source="${escapeHtml(game.source)}" data-game-id="${escapeHtml(game.id)}" aria-label="Abrir partida contra ${escapeHtml(opponent)}">→</button>
       </article>`;
   }).join("");
@@ -321,11 +339,11 @@ function selectOpening(eco) {
 }
 
 async function refreshCurrentPlayer() {
-  if (state.player?.source !== "lichess") return;
+  if (!["lichess", "chess.com"].includes(state.player?.source)) return;
   const button = $("#refresh-player");
   button.classList.add("spinning");
   try {
-    await api(`/players/lichess/${encodeURIComponent(state.player.external_id)}/refresh-games?max_games=30`, { method: "POST" });
+    await api(`/players/${encodeURIComponent(state.player.source)}/${encodeURIComponent(state.player.external_id)}/refresh-games?max_games=100`, { method: "POST" });
     await loadPlayer(state.player);
     toast("Partidas actualizadas", "El dossier se ha recalculado con la fuente pública.");
   } catch (error) { toast("No se pudo actualizar", error.message, "error"); }
@@ -481,13 +499,18 @@ async function submitImport() {
   try {
     const result = await api("/datasets", {
       method: "POST",
-      body: JSON.stringify({ pgn: state.pgnText, target_player: target || null, game_type: "otb" }),
+      body: JSON.stringify({
+        pgn: state.pgnText,
+        target_player: target || null,
+        game_type: "otb",
+        merge_with_dataset_id: state.datasetId,
+      }),
     });
-    state.mode = "combined";
-    $$("[data-mode]").forEach((button) => button.classList.toggle("active", button.dataset.mode === "combined"));
+    state.pace = "global";
+    $$("[data-pace]").forEach((button) => button.classList.toggle("active", button.dataset.pace === "global"));
     await loadPlayer(result.dataset.player, { scroll: true });
     const duplicateNote = result.duplicates ? ` · ${result.duplicates} duplicadas omitidas` : "";
-    toast("PGN procesado", `${result.dataset.games.length} partidas listas${duplicateNote}.`);
+    toast("PGN procesado", `${result.merged_games} partidas OTB añadidas · ${result.dataset.games.length} en el dossier${duplicateNote}.`);
     state.pgnText = "";
     $("#pgn-file").value = "";
     $("#selected-file").hidden = true;
@@ -498,11 +521,51 @@ async function submitImport() {
   }
 }
 
+function openImportDialog() {
+  if (state.player && !$("#target-player").value.trim()) {
+    $("#target-player").value = state.player.display_name;
+  }
+  openDialog("import-dialog");
+}
+
+async function submitCombinedProfiles() {
+  const lichess = $("#combine-lichess").value.trim();
+  const chesscom = $("#combine-chesscom").value.trim();
+  if (!lichess && !chesscom) {
+    toast("Faltan los usuarios", "Indica al menos un alias de Lichess o Chess.com.", "error");
+    return;
+  }
+  closeDialog("combine-dialog");
+  setLoading(true, "Uniendo los perfiles y deduplicando partidas…");
+  try {
+    const result = await api("/players/combined?max_games=100", {
+      method: "POST",
+      body: JSON.stringify({ lichess_username: lichess || null, chesscom_username: chesscom || null }),
+    });
+    state.pace = "global";
+    $$("[data-pace]").forEach((button) => button.classList.toggle("active", button.dataset.pace === "global"));
+    await loadPlayer(result.dataset.player, { scroll: true });
+    const sources = result.dataset.sources.map(sourceLabel).join(" + ");
+    toast("Dossier combinado", `${result.dataset.games.length} partidas de ${sources}.`);
+    if (result.warnings.length) toast("Avisos de las fuentes", result.warnings.join(" "));
+  } catch (error) {
+    setLoading(false);
+    toast("No se pudieron combinar los perfiles", error.message, "error");
+  }
+}
+
 function bindEvents() {
   $("#player-search").addEventListener("submit", searchPlayer);
   $("#load-demo").addEventListener("click", () => loadDemo(true));
   $("#refresh-player").addEventListener("click", refreshCurrentPlayer);
-  $$("[data-mode]").forEach((button) => button.addEventListener("click", () => switchMode(button.dataset.mode)));
+  $$("[data-pace]").forEach((button) => button.addEventListener("click", () => switchPace(button.dataset.pace)));
+  $$("[data-source]").forEach((button) => button.addEventListener("click", () => {
+    state.source = button.dataset.source;
+    $$("[data-source]").forEach((item) => item.classList.toggle("active", item === button));
+    $("#player-query").placeholder = state.source === "all"
+      ? "Usuario común en ambas plataformas…"
+      : `Usuario exacto de ${sourceLabel(state.source)}…`;
+  }));
   $$("[data-opening-color]").forEach((button) => button.addEventListener("click", () => {
     state.openingColor = button.dataset.openingColor;
     $$("[data-opening-color]").forEach((item) => item.classList.toggle("active", item === button));
@@ -512,11 +575,13 @@ function bindEvents() {
   $("#clear-filters").addEventListener("click", () => {
     $("#game-search").value = ""; $("#filter-color").value = "all"; $("#filter-result").value = "all"; state.selectedEco = null; renderGames();
   });
-  ["open-import", "open-import-bottom"].forEach((id) => document.getElementById(id).addEventListener("click", () => openDialog("import-dialog")));
+  ["open-import", "open-import-bottom"].forEach((id) => document.getElementById(id).addEventListener("click", openImportDialog));
+  $("#open-combine").addEventListener("click", () => openDialog("combine-dialog"));
   $$('[data-close-dialog]').forEach((button) => button.addEventListener("click", () => closeDialog(button.dataset.closeDialog)));
   $$(".dialog-backdrop").forEach((backdrop) => backdrop.addEventListener("mousedown", (event) => { if (event.target === backdrop) closeDialog(backdrop.id); }));
   $("#pgn-file").addEventListener("change", (event) => readPgnFile(event.target.files[0]));
   $("#submit-import").addEventListener("click", submitImport);
+  $("#submit-combine").addEventListener("click", submitCombinedProfiles);
   const drop = $("#drop-zone");
   ["dragenter", "dragover"].forEach((name) => drop.addEventListener(name, (event) => { event.preventDefault(); drop.classList.add("dragging"); }));
   ["dragleave", "drop"].forEach((name) => drop.addEventListener(name, (event) => { event.preventDefault(); drop.classList.remove("dragging"); }));
@@ -548,4 +613,3 @@ async function init() {
 }
 
 document.addEventListener("DOMContentLoaded", init);
-

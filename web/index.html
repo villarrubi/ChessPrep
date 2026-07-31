@@ -23,7 +23,7 @@
           <a href="#analisis">Análisis</a>
           <a href="#partidas">Partidas</a>
           <button class="button button-ghost button-small" id="open-import" type="button">
-            <span aria-hidden="true">＋</span> Importar PGN
+            <span aria-hidden="true">＋</span> Importar OTB / PGN
           </button>
         </nav>
         <button class="menu-button" id="menu-button" aria-expanded="false" aria-label="Abrir menú">☰</button>
@@ -38,8 +38,13 @@
               Descubre los hábitos de tu próximo rival. Repertorio, resultados y partidas,
               unidos en un análisis que siempre muestra de dónde sale cada dato.
             </p>
+            <div class="provider-switch" role="group" aria-label="Plataformas donde buscar">
+              <button type="button" data-source="all" class="active"><span class="dual-dots"><i></i><i></i></span> Ambas</button>
+              <button type="button" data-source="lichess"><i class="source-dot lichess"></i> Lichess</button>
+              <button type="button" data-source="chess.com"><i class="source-dot chesscom"></i> Chess.com</button>
+            </div>
             <form class="search-form" id="player-search" role="search">
-              <label class="sr-only" for="player-query">Usuario exacto de Lichess</label>
+              <label class="sr-only" for="player-query">Usuario exacto de la plataforma</label>
               <span class="search-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
               </span>
@@ -48,7 +53,7 @@
                 name="q"
                 type="search"
                 autocomplete="off"
-                placeholder="Usuario exacto de Lichess…"
+                placeholder="Usuario común en ambas plataformas…"
                 minlength="2"
               />
               <button class="button button-primary" type="submit">Analizar jugador <span>→</span></button>
@@ -56,6 +61,9 @@
             <div class="hero-actions">
               <button class="text-button" id="load-demo" type="button">
                 Ver análisis de muestra <span aria-hidden="true">↗</span>
+              </button>
+              <button class="text-button" id="open-combine" type="button">
+                Combinar alias distintos <span aria-hidden="true">＋</span>
               </button>
               <span class="hero-note"><i aria-hidden="true"></i> Sin cuentas · sin datos inventados</span>
             </div>
@@ -89,7 +97,7 @@
 
         <section class="trust-strip" aria-label="Características principales">
           <div><span class="trust-number">01</span><p><strong>Datos verificables</strong> Cada cifra enlaza a sus partidas.</p></div>
-          <div><span class="trust-number">02</span><p><strong>Dos mundos</strong> Online y tablero presencial, separados.</p></div>
+          <div><span class="trust-number">02</span><p><strong>Ritmo bajo control</strong> Global, blitz, rápida o lenta.</p></div>
           <div><span class="trust-number">03</span><p><strong>Estudio activo</strong> Recorre cualquier partida jugada a jugada.</p></div>
         </section>
 
@@ -99,10 +107,11 @@
               <p class="section-kicker">Dossier del rival</p>
               <h2>Tu mesa de preparación</h2>
             </div>
-            <div class="mode-switch" role="group" aria-label="Tipo de partidas">
-              <button type="button" data-mode="combined" class="active">Combinado</button>
-              <button type="button" data-mode="online">Online</button>
-              <button type="button" data-mode="otb">OTB</button>
+            <div class="mode-switch pace-switch" role="group" aria-label="Ritmo de juego">
+              <button type="button" data-pace="global" class="active">Global</button>
+              <button type="button" data-pace="blitz">Blitz</button>
+              <button type="button" data-pace="rapid">Rápida</button>
+              <button type="button" data-pace="classical">Lenta</button>
             </div>
           </div>
 
@@ -215,7 +224,7 @@
 
         <section class="closing-cta">
           <div><p class="section-kicker light">Tu propio archivo</p><h2>¿Tienes las partidas?<br /><em>Nosotros ponemos el orden.</em></h2></div>
-          <div><p>Importa un PGN de torneo. Se procesa de forma temporal, sin cuentas ni almacenamiento permanente.</p><button class="button button-light" id="open-import-bottom" type="button">Importar archivo PGN <span>→</span></button></div>
+          <div><p>Importa un PGN de torneo para añadir partidas presenciales. Se procesa de forma temporal, sin cuentas ni almacenamiento permanente.</p><button class="button button-light" id="open-import-bottom" type="button">Importar partidas OTB <span>→</span></button></div>
         </section>
       </main>
 
@@ -277,6 +286,31 @@
       </section>
     </div>
 
+    <div class="dialog-backdrop" id="combine-dialog" hidden>
+      <section class="dialog combine-dialog" role="dialog" aria-modal="true" aria-labelledby="combine-title">
+        <button class="dialog-close" type="button" data-close-dialog="combine-dialog" aria-label="Cerrar">×</button>
+        <p class="section-kicker">Perfil multiplataforma</p>
+        <h2 id="combine-title">Une sus dos identidades</h2>
+        <p class="dialog-lede">Indica los alias aunque sean diferentes. Las partidas se deduplicarán y aparecerán juntas en un único dossier online.</p>
+        <div class="provider-fields">
+          <label>
+            <span><i class="provider-dot lichess"></i> Usuario de Lichess</span>
+            <input class="text-field" id="combine-lichess" placeholder="Ej. DrNykterstein" autocomplete="off" />
+          </label>
+          <div class="provider-join" aria-hidden="true">＋</div>
+          <label>
+            <span><i class="provider-dot chesscom"></i> Usuario de Chess.com</span>
+            <input class="text-field" id="combine-chesscom" placeholder="Ej. MagnusCarlsen" autocomplete="off" />
+          </label>
+        </div>
+        <p class="combine-note">Puedes dejar una plataforma vacía. Cada fuente se identifica por separado en las estadísticas.</p>
+        <div class="dialog-actions">
+          <button class="button button-ghost" type="button" data-close-dialog="combine-dialog">Cancelar</button>
+          <button class="button button-primary" id="submit-combine" type="button">Crear dossier combinado <span>→</span></button>
+        </div>
+      </section>
+    </div>
+
     <div class="loading-layer" id="loading-layer" hidden aria-live="assertive">
       <div class="loader-piece">♞</div><p id="loading-text">Preparando el tablero…</p>
     </div>
@@ -285,4 +319,3 @@
     <script src="/app.js" defer></script>
   </body>
 </html>
-

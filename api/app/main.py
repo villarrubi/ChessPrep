@@ -2,14 +2,24 @@ from __future__ import annotations
 
 import os
 import re
+import hashlib
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from api.app.models import DatasetCreate, GameType, Mode, PlayerRef
-from api.app.providers.lichess import ProviderUnavailable, fetch_games, get_player
+from api.app.models import CombinedPlayerCreate, DatasetCreate, GameType, Mode, Pace, PlayerRef
+from api.app.providers.chesscom import (
+    ProviderUnavailable as ChessComUnavailable,
+    fetch_games as fetch_chesscom_games,
+    get_player as get_chesscom_player,
+)
+from api.app.providers.lichess import (
+    ProviderUnavailable as LichessUnavailable,
+    fetch_games as fetch_lichess_games,
+    get_player as get_lichess_player,
+)
 from api.app.services.pgn import parse_pgn
 from api.app.services.stats import calculate_stats, filter_games
 from api.app.services.store import store
@@ -78,26 +88,93 @@ def get_dataset_or_404(source: str, external_id: str):
     dataset = store.get_for_player(source, external_id)
     if dataset:
         return dataset
-    if source != "lichess":
+    if source not in {"lichess", "chess.com"}:
         raise HTTPException(status_code=404, detail="No se encontró el conjunto temporal.")
     try:
-        player = get_player(external_id)
-        parsed = fetch_games(player.username)
+        if source == "lichess":
+            player = get_lichess_player(external_id)
+            parsed = fetch_lichess_games(player.username)
+        else:
+            player = get_chesscom_player(external_id)
+            parsed = fetch_chesscom_games(player.username)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ProviderUnavailable as exc:
+    except (LichessUnavailable, ChessComUnavailable) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     if not parsed.games:
         raise HTTPException(status_code=422, detail="Lichess no devolvió partidas públicas utilizables.")
     return store.create(player, parsed.games)
 
 
-def trace_for(dataset, games, mode: Mode):
+def create_combined_player_dataset(payload: CombinedPlayerCreate, max_games: int = 30):
+    handles = [payload.lichess_username, payload.chesscom_username]
+    if not any(value and value.strip() for value in handles):
+        raise HTTPException(status_code=422, detail="Indica al menos un usuario de Lichess o Chess.com.")
+
+    players: list[PlayerRef] = []
+    games = []
+    warnings: list[str] = []
+    requested = 0
+
+    if payload.lichess_username and payload.lichess_username.strip():
+        requested += 1
+        handle = payload.lichess_username.strip()
+        try:
+            player = get_lichess_player(handle)
+            parsed = fetch_lichess_games(player.username, max_games=max_games)
+            players.append(player)
+            games.extend(parsed.games)
+            warnings.extend(parsed.errors)
+        except (LookupError, LichessUnavailable) as exc:
+            warnings.append(f"Lichess: {exc}")
+
+    if payload.chesscom_username and payload.chesscom_username.strip():
+        requested += 1
+        handle = payload.chesscom_username.strip()
+        try:
+            player = get_chesscom_player(handle)
+            parsed = fetch_chesscom_games(player.username, max_games=max_games)
+            players.append(player)
+            games.extend(parsed.games)
+            warnings.extend(parsed.errors)
+        except (LookupError, ChessComUnavailable) as exc:
+            warnings.append(f"Chess.com: {exc}")
+
+    if not games:
+        detail = " ".join(warnings) or "Ninguna plataforma devolvió partidas públicas."
+        raise HTTPException(status_code=422, detail=detail)
+
+    unique_games = {}
+    for game in games:
+        unique_games.setdefault(game.dedupe_hash, game)
+    duplicates = len(games) - len(unique_games)
+    identifier_source = "|".join(value.strip().casefold() for value in handles if value and value.strip())
+    external_id = hashlib.sha256(identifier_source.encode("utf-8")).hexdigest()[:16]
+    display_player = next((player for player in players if " " in player.display_name), players[0])
+    combined_player = PlayerRef(
+        source="combined",
+        external_id=external_id,
+        username=" + ".join(player.username for player in players),
+        display_name=display_player.display_name,
+        title=next((player.title for player in players if player.title), None),
+        rating=max((player.rating for player in players if player.rating), default=None),
+        country=next((player.country for player in players if player.country), None),
+        avatar_url=next((player.avatar_url for player in players if player.avatar_url), None),
+        game_type=GameType.ONLINE,
+    )
+    dataset = store.create(combined_player, list(unique_games.values()))
+    if len(players) < requested:
+        warnings.append("El dossier se creó con las plataformas que sí estaban disponibles.")
+    return dataset, warnings, duplicates
+
+
+def trace_for(dataset, games, mode: Mode, pace: Pace):
     dates = sorted(game.date for game in games if game.date)
     return {
         "sample_size": len(games),
         "sources": sorted({game.source for game in games}),
         "mode": mode.value,
+        "pace": pace.value,
         "date_range": {"from": dates[0] if dates else None, "to": dates[-1] if dates else None},
         "dataset_id": dataset.dataset_id,
         "expires_at": dataset.expires_at,
@@ -121,7 +198,7 @@ def demo():
 
 
 @app.get("/api/v1/players/search")
-def search_players(q: str = Query(min_length=2, max_length=80), source: str = "lichess"):
+def search_players(q: str = Query(min_length=2, max_length=80), source: str = "all"):
     clean = q.strip()
     demo_match = clean.casefold() in {
         "judit",
@@ -131,21 +208,39 @@ def search_players(q: str = Query(min_length=2, max_length=80), source: str = "l
         "muestra",
     }
     results = [DEMO_PLAYER] if demo_match else []
-    if source not in {"lichess", "all"}:
-        return {"results": results, "provider_available": True}
-    try:
-        player = get_player(clean)
-        if not any(item.external_id == player.external_id and item.source == player.source for item in results):
+    messages: list[str] = []
+    available = False
+    if source in {"lichess", "all"}:
+        try:
+            player = get_lichess_player(clean)
             results.append(player)
-        return {"results": results, "provider_available": True}
-    except LookupError:
-        return {
-            "results": results,
-            "provider_available": True,
-            "message": "No se encontró una cuenta exacta en Lichess.",
-        }
-    except ProviderUnavailable as exc:
-        return {"results": results, "provider_available": False, "message": str(exc)}
+            available = True
+        except LookupError:
+            messages.append("No se encontró una cuenta exacta en Lichess.")
+            available = True
+        except LichessUnavailable as exc:
+            messages.append(str(exc))
+    if source in {"chess.com", "all"}:
+        try:
+            player = get_chesscom_player(clean)
+            results.append(player)
+            available = True
+        except LookupError:
+            messages.append("No se encontró una cuenta exacta en Chess.com.")
+            available = True
+        except ChessComUnavailable as exc:
+            messages.append(str(exc))
+    return {
+        "results": results,
+        "provider_available": available,
+        "message": " ".join(messages) or None,
+    }
+
+
+@app.post("/api/v1/players/combined")
+def combine_players(payload: CombinedPlayerCreate, max_games: int = Query(100, ge=1, le=100)):
+    dataset, warnings, duplicates = create_combined_player_dataset(payload, max_games=max_games)
+    return {"dataset": dataset, "warnings": warnings, "duplicates": duplicates}
 
 
 @app.get("/api/v1/players/{source}/{external_id}")
@@ -155,29 +250,33 @@ def player_detail(source: str, external_id: str):
     existing = store.get_for_player(source, external_id)
     if existing:
         return existing.player
-    if source != "lichess":
+    if source not in {"lichess", "chess.com"}:
         raise HTTPException(status_code=404, detail="Jugador no encontrado.")
     try:
-        return get_player(external_id)
+        return get_lichess_player(external_id) if source == "lichess" else get_chesscom_player(external_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ProviderUnavailable as exc:
+    except (LichessUnavailable, ChessComUnavailable) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.post("/api/v1/players/{source}/{external_id}/refresh-games")
-def refresh_games(source: str, external_id: str, max_games: int = Query(30, ge=1, le=100)):
+def refresh_games(source: str, external_id: str, max_games: int = Query(100, ge=1, le=100)):
     if source == "demo":
         dataset = ensure_demo()
         return {"dataset": dataset, "warnings": [], "duplicates": 0}
-    if source != "lichess":
+    if source not in {"lichess", "chess.com"}:
         raise HTTPException(status_code=400, detail="El proveedor indicado no admite actualización.")
     try:
-        player = get_player(external_id)
-        parsed = fetch_games(player.username, max_games=max_games)
+        if source == "lichess":
+            player = get_lichess_player(external_id)
+            parsed = fetch_lichess_games(player.username, max_games=max_games)
+        else:
+            player = get_chesscom_player(external_id)
+            parsed = fetch_chesscom_games(player.username, max_games=max_games)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ProviderUnavailable as exc:
+    except (LichessUnavailable, ChessComUnavailable) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     if not parsed.games:
         raise HTTPException(status_code=422, detail="No se encontraron partidas públicas válidas.")
@@ -190,18 +289,20 @@ def player_games(
     source: str,
     external_id: str,
     mode: Mode = Mode.COMBINED,
+    pace: Pace = Pace.GLOBAL,
     color: str | None = None,
     eco: str | None = None,
     result: str | None = None,
     date_from: str | None = Query(None, alias="from"),
     date_to: str | None = Query(None, alias="to"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=250),
 ):
     dataset = get_dataset_or_404(source, external_id)
     games = filter_games(
         dataset.games,
         mode=mode,
+        pace=pace,
         color=color,
         eco=eco,
         result=result,
@@ -214,21 +315,31 @@ def player_games(
         "total": len(games),
         "page": page,
         "page_size": page_size,
-        "trace": trace_for(dataset, games, mode),
+        "trace": trace_for(dataset, games, mode, pace),
     }
 
 
 @app.get("/api/v1/players/{source}/{external_id}/stats")
-def player_stats(source: str, external_id: str, mode: Mode = Mode.COMBINED):
+def player_stats(
+    source: str,
+    external_id: str,
+    mode: Mode = Mode.COMBINED,
+    pace: Pace = Pace.GLOBAL,
+):
     dataset = get_dataset_or_404(source, external_id)
-    return calculate_stats(dataset.games, mode)
+    return calculate_stats(dataset.games, mode, pace)
 
 
 @app.get("/api/v1/players/{source}/{external_id}/stats/by-color")
-def player_stats_by_color(source: str, external_id: str, mode: Mode = Mode.COMBINED):
+def player_stats_by_color(
+    source: str,
+    external_id: str,
+    mode: Mode = Mode.COMBINED,
+    pace: Pace = Pace.GLOBAL,
+):
     dataset = get_dataset_or_404(source, external_id)
-    stats = calculate_stats(dataset.games, mode)
-    return {key: stats[key] for key in ("mode", "sample_size", "sources", "date_range", "by_color")}
+    stats = calculate_stats(dataset.games, mode, pace)
+    return {key: stats[key] for key in ("mode", "pace", "sample_size", "sources", "date_range", "by_color")}
 
 
 @app.get("/api/v1/players/{source}/{external_id}/stats/openings")
@@ -236,15 +347,17 @@ def player_stats_openings(
     source: str,
     external_id: str,
     mode: Mode = Mode.COMBINED,
+    pace: Pace = Pace.GLOBAL,
     color: str | None = None,
 ):
     dataset = get_dataset_or_404(source, external_id)
-    stats = calculate_stats(dataset.games, mode)
+    stats = calculate_stats(dataset.games, mode, pace)
     openings = stats["openings"]
     if color:
         openings = [item for item in openings if item["color"] == color]
     return {
         "mode": stats["mode"],
+        "pace": stats["pace"],
         "sample_size": stats["sample_size"],
         "sources": stats["sources"],
         "date_range": stats["date_range"],
@@ -263,17 +376,43 @@ def game_detail(source: str, game_id: str):
 
 @app.post("/api/v1/datasets", status_code=201)
 def create_dataset(payload: DatasetCreate):
+    base_dataset = None
+    if payload.merge_with_dataset_id:
+        base_dataset = store.get(payload.merge_with_dataset_id)
+        if not base_dataset:
+            raise HTTPException(status_code=404, detail="El dossier que querías ampliar ha caducado.")
+    target_player = payload.target_player or (base_dataset.player.display_name if base_dataset else None)
     parsed = parse_pgn(
         payload.pgn,
         source="pgn_import",
         game_type=payload.game_type,
-        target_player=payload.target_player,
+        target_player=target_player,
         confidence="user_upload",
     )
     if not parsed.games:
         detail = parsed.errors[0] if parsed.errors else "No se pudo procesar el PGN."
         raise HTTPException(status_code=422, detail=detail)
-    target = payload.target_player or parsed.games[0].target_player
+    if base_dataset:
+        merged_games = {}
+        for game in [*base_dataset.games, *parsed.games]:
+            merged_games.setdefault(game.dedupe_hash, game)
+        cross_duplicates = len(base_dataset.games) + len(parsed.games) - len(merged_games)
+        identity = f"{base_dataset.player.source}|{base_dataset.player.external_id}|otb"
+        merged_player = base_dataset.player.model_copy(
+            update={
+                "source": "combined",
+                "external_id": hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16],
+            }
+        )
+        dataset = store.create(merged_player, list(merged_games.values()))
+        return {
+            "dataset": dataset,
+            "warnings": parsed.errors,
+            "duplicates": parsed.duplicates + cross_duplicates,
+            "merged_games": len(parsed.games) - cross_duplicates,
+        }
+
+    target = target_player or parsed.games[0].target_player
     slug = re.sub(r"[^a-z0-9]+", "-", target.casefold()).strip("-") or "jugador-importado"
     player = PlayerRef(
         source="upload",
@@ -287,27 +426,35 @@ def create_dataset(payload: DatasetCreate):
         "dataset": dataset,
         "warnings": parsed.errors,
         "duplicates": parsed.duplicates,
+        "merged_games": len(parsed.games),
     }
 
 
 @app.get("/api/v1/datasets/{dataset_id}/games")
-def dataset_games(dataset_id: str, mode: Mode = Mode.COMBINED):
+def dataset_games(
+    dataset_id: str,
+    mode: Mode = Mode.COMBINED,
+    pace: Pace = Pace.GLOBAL,
+):
     dataset = store.get(dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset no encontrado o caducado.")
-    games = filter_games(dataset.games, mode=mode)
-    return {"items": games, "total": len(games), "trace": trace_for(dataset, games, mode)}
+    games = filter_games(dataset.games, mode=mode, pace=pace)
+    return {"items": games, "total": len(games), "trace": trace_for(dataset, games, mode, pace)}
 
 
 @app.get("/api/v1/datasets/{dataset_id}/stats")
-def dataset_stats(dataset_id: str, mode: Mode = Mode.COMBINED):
+def dataset_stats(
+    dataset_id: str,
+    mode: Mode = Mode.COMBINED,
+    pace: Pace = Pace.GLOBAL,
+):
     dataset = store.get(dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset no encontrado o caducado.")
-    return calculate_stats(dataset.games, mode)
+    return calculate_stats(dataset.games, mode, pace)
 
 
 web_dir = Path(os.getenv("CHESSPREP_WEB_DIR", Path(__file__).resolve().parents[2] / "web"))
 if web_dir.exists():
     app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")
-

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Iterable
 
-from api.app.models import Mode, NormalizedGame
+from api.app.models import Mode, NormalizedGame, Pace
 
 
 def outcome_for_player(game: NormalizedGame) -> str:
@@ -21,6 +21,7 @@ def filter_games(
     games: Iterable[NormalizedGame],
     *,
     mode: Mode = Mode.COMBINED,
+    pace: Pace = Pace.GLOBAL,
     color: str | None = None,
     eco: str | None = None,
     result: str | None = None,
@@ -30,6 +31,10 @@ def filter_games(
     filtered: list[NormalizedGame] = []
     for game in games:
         if mode != Mode.COMBINED and game.game_type.value != mode.value:
+            continue
+        if pace == Pace.GLOBAL and game.time_class == "bullet":
+            continue
+        if pace != Pace.GLOBAL and game.time_class != pace.value:
             continue
         if color and color != "all" and game.player_color != color:
             continue
@@ -63,8 +68,12 @@ def _record(games: list[NormalizedGame]) -> dict:
     }
 
 
-def calculate_stats(games: list[NormalizedGame], mode: Mode = Mode.COMBINED) -> dict:
-    selected = filter_games(games, mode=mode)
+def calculate_stats(
+    games: list[NormalizedGame],
+    mode: Mode = Mode.COMBINED,
+    pace: Pace = Pace.GLOBAL,
+) -> dict:
+    selected = filter_games(games, mode=mode, pace=pace)
     dates = sorted(game.date for game in selected if game.date)
     sources = sorted({game.source for game in selected})
     overall = _record(selected)
@@ -114,6 +123,7 @@ def calculate_stats(games: list[NormalizedGame], mode: Mode = Mode.COMBINED) -> 
 
     return {
         "mode": mode.value,
+        "pace": pace.value,
         "sample_size": len(selected),
         "sources": sources,
         "date_range": {"from": dates[0] if dates else None, "to": dates[-1] if dates else None},
@@ -126,4 +136,3 @@ def calculate_stats(games: list[NormalizedGame], mode: Mode = Mode.COMBINED) -> 
         "openings": openings,
         "recent_form": form,
     }
-

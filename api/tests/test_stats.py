@@ -1,5 +1,5 @@
 from api.app.main import ensure_demo
-from api.app.models import Mode
+from api.app.models import Mode, Pace
 from api.app.services.stats import calculate_stats, filter_games, outcome_for_player
 
 
@@ -17,3 +17,12 @@ def test_mode_and_opening_aggregations():
     assert sum(item["games"] for item in stats["openings"]) == 12
     assert sum(item["games"] for item in stats["by_color"]) == 12
 
+
+def test_pace_filters_blitz_rapid_and_classical():
+    games = ensure_demo().games
+    assert len(filter_games(games, pace=Pace.BLITZ)) == 2
+    assert len(filter_games(games, pace=Pace.RAPID)) == 4
+    assert len(filter_games(games, pace=Pace.CLASSICAL)) == 6
+    assert calculate_stats(games, pace=Pace.GLOBAL)["sample_size"] == 12
+    bullet = games[0].model_copy(update={"id": "bullet-copy", "time_class": "bullet"})
+    assert bullet not in filter_games([bullet], pace=Pace.GLOBAL)

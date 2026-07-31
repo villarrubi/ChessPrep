@@ -114,6 +114,13 @@ svg { width: 1.2em; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-
 .search-form input { min-width: 0; flex: 1; height: 48px; border: 0; outline: 0; background: transparent; color: var(--ink); }
 .search-form input::placeholder { color: #8d948f; }
 .search-form .button { height: 48px; white-space: nowrap; }
+.provider-switch { max-width: 680px; margin: 0 0 9px; display: flex; align-items: center; gap: 6px; }
+.provider-switch button { height: 31px; padding: 0 12px; border: 1px solid transparent; border-radius: 16px; background: transparent; color: #6f7974; display: inline-flex; align-items: center; gap: 7px; font-size: 9px; font-weight: 800; cursor: pointer; transition: .18s ease; }
+.provider-switch button:hover { background: rgba(16,35,31,.05); color: var(--ink); }
+.provider-switch button.active { border-color: var(--forest); background: var(--forest); color: var(--cream); box-shadow: 0 5px 13px rgba(16,35,31,.14); }
+.source-dot, .dual-dots i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.source-dot.lichess, .dual-dots i:first-child { background: #a27b5c; }.source-dot.chesscom, .dual-dots i:last-child { background: #81a65e; }
+.dual-dots { display: inline-flex; }.dual-dots i + i { margin-left: -2px; box-shadow: 0 0 0 2px var(--forest); }
 .hero-actions { margin-top: 19px; display: flex; align-items: center; gap: 30px; }
 .text-button { padding: 0; border: 0; background: none; color: var(--forest); font-size: 12px; font-weight: 800; cursor: pointer; border-bottom: 1px solid currentColor; }
 .hero-note { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; color: #737d78; }
@@ -161,6 +168,7 @@ svg { width: 1.2em; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-
 .mode-switch, .color-filter { padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: #eae7de; display: inline-flex; }
 .mode-switch button, .color-filter button { height: 34px; padding: 0 16px; border: 0; border-radius: 5px; background: transparent; color: #707974; font-size: 10px; font-weight: 800; cursor: pointer; }
 .mode-switch button.active, .color-filter button.active { background: var(--paper); color: var(--ink); box-shadow: 0 3px 8px rgba(20,33,29,.08); }
+.pace-switch button { min-width: 67px; }
 .player-banner { min-height: 104px; margin-bottom: 20px; padding: 20px 24px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); display: flex; align-items: center; justify-content: space-between; gap: 25px; box-shadow: 0 8px 25px rgba(20,33,29,.04); }
 .player-identity { display: flex; align-items: center; gap: 16px; }
 .player-avatar { width: 62px; height: 62px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center; background: var(--forest); color: var(--cream); font-family: var(--serif); font-size: 20px; }
@@ -284,6 +292,12 @@ footer > p { flex: 1; } footer > div { display: flex; gap: 12px; } footer a:hove
 .field-label { display: block; margin: 21px 0 7px; font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .8px; }.field-label span { color: #929994; font-weight: 500; text-transform: none; letter-spacing: 0; }
 .text-field { width: 100%; height: 46px; padding: 0 13px; border: 1px solid var(--line); border-radius: 7px; background: white; outline: none; font-size: 12px; }.text-field:focus { border-color: var(--forest-2); box-shadow: 0 0 0 3px rgba(28,57,50,.08); }
 .dialog-actions { margin-top: 23px; display: flex; justify-content: flex-end; gap: 9px; }
+.provider-fields { margin-top: 22px; display: grid; grid-template-columns: 1fr 28px 1fr; align-items: end; gap: 8px; }
+.provider-fields label > span { min-height: 24px; display: flex; align-items: center; gap: 7px; color: #5f6964; font-size: 9px; font-weight: 900; }
+.provider-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.provider-dot.lichess { background: #7b6555; }.provider-dot.chesscom { background: #769656; }
+.provider-join { height: 46px; display: grid; place-items: center; color: var(--terracotta); font-family: var(--serif); font-size: 20px; }
+.combine-note { margin: 12px 0 0; padding: 10px 12px; border-radius: 6px; background: #eeeae1; color: #76807b; font-size: 8px; line-height: 1.5; }
 
 .viewer-backdrop { padding: 20px; }
 .viewer-dialog { width: min(1120px, 100%); height: min(760px, calc(100vh - 40px)); max-height: none; padding: 28px; overflow: hidden; display: grid; grid-template-columns: minmax(430px, 1fr) minmax(340px, .72fr); gap: 36px; background: #eeeae0; }
@@ -342,6 +356,7 @@ footer > p { flex: 1; } footer > div { display: flex; gap: 12px; } footer a:hove
 @media (max-width: 560px) {
   .site-header { height: 70px; }.brand-name { font-size: 20px; }
   .hero { padding-top: 47px; }.hero h1 { font-size: 50px; line-height: 1; }.hero-lede { font-size: 15px; }
+  .provider-switch { overflow-x: auto; padding-bottom: 2px; }.provider-switch button { flex: 0 0 auto; }
   .search-form { padding: 6px; flex-wrap: wrap; }.search-icon { width: 39px; }.search-form input { min-width: calc(100% - 39px); }.search-form .button { width: 100%; margin-top: 5px; }
   .hero-actions { align-items: flex-start; flex-direction: column; gap: 14px; }.hero-card { min-height: 450px; }.mini-board-wrap { transform: scale(.88); }
   .section-heading-row { align-items: flex-start; flex-direction: column; }.mode-switch { width: 100%; }.mode-switch button { flex: 1; padding: 0 6px; }
@@ -352,6 +367,7 @@ footer > p { flex: 1; } footer > div { display: flex; gap: 12px; } footer a:hove
   .games-toolbar select { width: 100%; flex-basis: 100%; }.game-row { min-height: 96px; padding: 12px; grid-template-columns: minmax(0,1fr) 40px; gap: 8px; }.game-row .game-opening, .game-row .game-event, .game-row .game-mode { display:none; }
   .closing-cta { padding: 55px 24px; }.closing-cta h2 { font-size: 42px; }
   .dialog-backdrop { padding: 10px; }.dialog { padding: 29px 20px; }.dialog h2 { font-size: 32px; }
+  .provider-fields { grid-template-columns: 1fr; }.provider-join { height: 22px; }.provider-join { transform: rotate(90deg); }
   .viewer-backdrop { padding: 6px; }.viewer-dialog { height: calc(100vh - 12px); padding: 16px 10px; }.chessboard { width: min(91vw, 470px); border-width: 5px; }.board-player { width: min(91vw, 470px); }.board-square { font-size: 10vw; }.viewer-info { padding: 16px; }.keyboard-tip { display: none; }
 }
 

@@ -112,6 +112,7 @@ def parse_pgn(
     games: list[NormalizedGame] = []
     errors: list[str] = []
     seen: set[str] = set()
+    seen_game_ids: set[str] = set()
     duplicates = 0
     game_number = 0
 
@@ -163,11 +164,17 @@ def parse_pgn(
             continue
         seen.add(dedupe_hash)
 
-        source_id = headers.get("GameId") or headers.get("Site", "").rstrip("/").split("/")[-1]
-        if source_id in {"", "?", "-"}:
+        source_id = headers.get("GameId")
+        site_header = headers.get("Site", "").strip()
+        if not source_id and site_header.startswith(("http://", "https://")):
+            source_id = site_header.rstrip("/").split("/")[-1]
+        if source_id in {None, "", "?", "-", "Chess.com", "lichess.org"}:
             source_id = None
         short_hash = dedupe_hash[:12]
         game_id = f"{source}-{source_id or short_hash}"
+        if game_id in seen_game_ids:
+            game_id = f"{source}-{short_hash}"
+        seen_game_ids.add(game_id)
         exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=False)
 
         games.append(
@@ -203,4 +210,3 @@ def parse_pgn(
     if game_number == 0:
         errors.append("No se encontró ninguna partida PGN.")
     return ParseResult(games=games, errors=errors, duplicates=duplicates)
-

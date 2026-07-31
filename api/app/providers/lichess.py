@@ -59,7 +59,7 @@ def get_player(username: str) -> PlayerRef:
 
 
 def fetch_games(username: str, max_games: int | None = None) -> ParseResult:
-    configured_max = int(os.getenv("CHESSPREP_LICHESS_MAX_GAMES", "30"))
+    configured_max = int(os.getenv("CHESSPREP_LICHESS_MAX_GAMES", "100"))
     limit = min(max(max_games or configured_max, 1), 100)
     query = f"max={limit}&clocks=false&evals=false&opening=true"
     body = _get(
@@ -74,4 +74,3 @@ def fetch_games(username: str, max_games: int | None = None) -> ParseResult:
         target_player=username,
         confidence="official",
     )
-

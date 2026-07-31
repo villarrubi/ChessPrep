@@ -1,13 +1,14 @@
 # ChessPrep
 
-Aplicación web de preparación ajedrecística para torneos. Convierte partidas públicas de Lichess o archivos PGN en estadísticas trazables y permite recorrer cada partida jugada a jugada.
+Aplicación web de preparación ajedrecística para torneos. Convierte partidas públicas de Lichess y Chess.com o archivos PGN en estadísticas trazables y permite recorrer cada partida jugada a jugada.
 
 ## Qué incluye este MVP
 
-- Búsqueda de un usuario exacto de Lichess y consulta de sus partidas públicas.
+- Búsqueda de usuarios exactos de Lichess y Chess.com.
+- Dossier combinado para unir ambas plataformas aunque los alias sean distintos.
 - Dossier de jugador con score global, forma reciente y desglose por color.
 - Repertorio por ECO, apertura, color, frecuencia y score.
-- Selector `online / OTB / combinado` en todo el análisis.
+- Selector de ritmo `global / blitz / rápida / lenta` aplicado a partidas y estadísticas; bullet queda fuera del análisis.
 - Lista de partidas con filtros por texto, color, resultado y apertura.
 - Navegación desde una estadística hasta las partidas que la forman.
 - Visor con posiciones FEN validadas, controles, reproducción y teclado.
@@ -24,7 +25,7 @@ api/app/main.py            Endpoints FastAPI y servidor local del frontend
 api/app/services/pgn.py    Normalización PGN, SAN, UCI, FEN y deduplicación
 api/app/services/stats.py  Filtros y estadísticas deterministas
 api/app/services/store.py  Datasets en memoria con caducidad
-api/app/providers/         Integración con Lichess
+api/app/providers/         Integraciones oficiales con Lichess y Chess.com
 api/tests/                 Pruebas del contrato, parser y estadísticas
 docker-compose.yml         Servicios web y api separados
 ```
@@ -64,12 +65,13 @@ docker compose up --build
 .venv\Scripts\python -m pytest -q
 ```
 
-Las pruebas comprueban el dataset de muestra, los totales estadísticos, los filtros online/OTB, la trazabilidad de una partida, las posiciones del visor y la deduplicación de PGN.
+Las pruebas comprueban el dataset de muestra, los totales estadísticos, los filtros por ritmo, la trazabilidad de una partida, las posiciones del visor y la deduplicación de PGN.
 
 ## API principal
 
 ```text
 GET  /api/v1/players/search?q={usuario}
+POST /api/v1/players/combined
 GET  /api/v1/players/{source}/{external_id}
 POST /api/v1/players/{source}/{external_id}/refresh-games
 GET  /api/v1/players/{source}/{external_id}/games
@@ -82,7 +84,7 @@ GET  /api/v1/datasets/{dataset_id}/games
 GET  /api/v1/datasets/{dataset_id}/stats
 ```
 
-Cada resultado estadístico declara su muestra, fuentes, modo y rango temporal. Los datasets importados se guardan únicamente en memoria y caducan por defecto a los 30 minutos.
+Cada resultado estadístico declara su muestra, fuentes, ritmo y rango temporal. Los datasets importados se guardan únicamente en memoria y caducan por defecto a los 30 minutos.
 
 ## Configuración
 
@@ -90,6 +92,7 @@ Copia `.env.example` si quieres modificar:
 
 - `CHESSPREP_DATASET_TTL_MINUTES`: duración del dataset temporal.
 - `CHESSPREP_LICHESS_MAX_GAMES`: máximo de partidas por actualización.
+- `CHESSPREP_CHESSCOM_MAX_GAMES`: máximo de partidas de Chess.com por actualización.
 - `CHESSPREP_CORS_ORIGINS`: orígenes admitidos por la API.
 
-La disponibilidad de Lichess depende de su servicio público. Si la fuente no responde, el análisis de muestra y la importación PGN continúan funcionando.
+La disponibilidad de Lichess y Chess.com depende de sus servicios públicos. Si una fuente no responde, el dossier combinado utiliza las demás que estén disponibles. Las partidas OTB se incorporan mediante PGN porque no existe una API pública universal de búsqueda por jugador.

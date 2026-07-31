@@ -5,7 +5,8 @@ services:
       dockerfile: api/Dockerfile
     environment:
       CHESSPREP_DATASET_TTL_MINUTES: 30
-      CHESSPREP_LICHESS_MAX_GAMES: 30
+      CHESSPREP_LICHESS_MAX_GAMES: 100
+      CHESSPREP_CHESSCOM_MAX_GAMES: 100
       CHESSPREP_CORS_ORIGINS: http://localhost:3000
     ports:
       - "8000:8000"
@@ -18,4 +19,3 @@ services:
       - api
     ports:
       - "3000:80"
-

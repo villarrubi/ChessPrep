@@ -17,6 +17,13 @@ class Mode(str, Enum):
     COMBINED = "combined"
 
 
+class Pace(str, Enum):
+    GLOBAL = "global"
+    BLITZ = "blitz"
+    RAPID = "rapid"
+    CLASSICAL = "classical"
+
+
 class PlayerRef(BaseModel):
     source: str
     external_id: str
@@ -70,6 +77,13 @@ class DatasetCreate(BaseModel):
     pgn: str = Field(min_length=8)
     target_player: str | None = None
     game_type: GameType = GameType.OTB
+    merge_with_dataset_id: str | None = None
+
+
+class CombinedPlayerCreate(BaseModel):
+    lichess_username: str | None = Field(default=None, min_length=2, max_length=80)
+    chesscom_username: str | None = Field(default=None, min_length=2, max_length=80)
+
 
 
 class SearchResponse(BaseModel):
@@ -82,4 +96,3 @@ class ApiError(BaseModel):
     code: str
     message: str
     detail: str | None = None
-
