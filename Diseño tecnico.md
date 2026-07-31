@@ -1,104 +1,154 @@
-# ChessPrep AI — Documento Técnico de Diseño (Final)
+# ChessPrep — Documento Técnico de Diseño (Web)
 
-**Fecha:** 30 de julio de 2026
+**Fecha:** 31 de julio de 2026  
+**Producto:** aplicación web (navegador). Sin APIs de IA generativa. Sin empaquetado nativo (Capacitor / tiendas) en el alcance actual.
 
 ---
 
 ## 1. Resumen del proyecto
 
-ChessPrep AI es un asistente de preparación ajedrecística que, dado el nombre de un rival, localiza sus partidas públicas (online y/o presenciales), las analiza estadísticamente y con motor de ajedrez, y genera un informe redactado que distingue explícitamente entre datos objetivos, estadísticas, inferencias e hipótesis.
+ChessPrep es una **aplicación web de preparación ajedrecística** con dos funciones principales:
 
-Principios de diseño que condicionan toda la arquitectura:
+1. **Visor de partidas paso a paso** — abrir una partida del rival y recorrerla jugada a jugada sobre un tablero interactivo.
+2. **Estadísticas del jugador** — ver datos agregados y objetivos sobre su juego (rendimiento con blancas/negras, aperturas, piezas relevantes, etc.), siempre trazables a un conjunto concreto de partidas.
 
-- **Nunca inventar datos.** Todo dato mostrado debe ser trazable a una fuente y a un conjunto de partidas concreto.
-- **Multi-fuente por diseño.** Ninguna fuente externa es obligatoria ni fiable al 100%; el sistema degrada con elegancia si una fuente falla o no existe.
-- **Módulos desacoplados.** Cada uno de los 17 módulos originales debe poder desarrollarse, probarse y desplegarse de forma independiente.
-- **Confianza cuantificada.** Cualquier conclusión "blanda" (fortalezas, debilidades, cambios de repertorio) va acompañada de un nivel de confianza calculado, no asignado a mano.
-- **Separación online / OTB / combinado.** Todo análisis debe poder acotarse explícitamente por tipo de partida.
-- **El LLM nunca calcula, solo redacta.** El Informe IA (Módulo 11) recibe datos ya validados por el Motor de Análisis y el motor de ajedrez; nunca ve PGN crudo ni infiere estadísticas por su cuenta.
+El flujo típico: buscar un rival → ingerir/consultar sus partidas públicas → explorar estadísticas o abrir una partida y avanzar/retroceder en el tablero.
+
+No hay redacción automática de informes ni llamadas a modelos de lenguaje. Toda la información que ve el usuario sale de datos de partidas (PGN) y de cálculos deterministas en el backend.
+
+Principios de diseño:
+
+- **Dos pilares de producto.** Cualquier pantalla o endpoint debe servir al visor o a las estadísticas (o a ambas: p. ej. “abrir partidas de esta apertura”).
+- **Nunca inventar datos.** Todo número mostrado debe ser trazable a una fuente y a un conjunto de partidas concreto.
+- **Multi-fuente por diseño.** Ninguna fuente externa es obligatoria; el sistema degrada si una falla o no existe.
+- **Separación online / OTB / combinado.** Estadísticas y listados de partidas se pueden acotar por tipo.
+- **Sin IA generativa.** No hay LLM ni APIs de IA. El motor de ajedrez (Stockfish), si se usa, es evaluación numérica opcional sobre posiciones, no generación de texto.
+- **Web-first.** UI en el navegador; lógica pesada (ingesta, agregaciones, evaluación) en el backend.
 
 ---
 
-## 2. Stack tecnológico
+## 2. Funciones principales
+
+### 2.1 Visor de partidas paso a paso
+
+Objetivo: estudiar cómo juega el rival en partidas concretas.
+
+| Capacidad | Detalle |
+|---|---|
+| Lista de partidas | Filtrable por color, apertura/ECO, resultado, fecha, modo (online/OTB/combinado), rival |
+| Navegación jugada a jugada | Avanzar / retroceder / ir a jugada N; teclado y controles en pantalla |
+| Tablero interactivo | `react-chessboard` + `chess.js` (o equivalente); FEN/PGN desde la API |
+| Metadatos | Evento, fecha, resultado, ECO, fuente, Elo si existe |
+| Enlace desde stats | Desde una apertura o un filtro estadístico, saltar a las partidas que lo componen |
+| Evaluación de motor (opcional, v1.x) | Barra de evaluación / marcas de error vía Stockfish en servidor; no bloquea el MVP del visor |
+
+El MVP del visor es **reproducir el PGN paso a paso**. Stockfish es una mejora posterior sobre la misma pantalla.
+
+### 2.2 Estadísticas del jugador
+
+Objetivo: preparar el enfrentamiento con números claros, sin texto generado.
+
+Ejemplos de métricas (todas calculadas a partir de partidas etiquetadas):
+
+| Área | Ejemplos |
+|---|---|
+| Color | % victoria / tablas / derrota con **blancas** vs **negras**; Elo medio de rivales por color |
+| Aperturas | Repertorio por ECO/nombre, frecuencia, score por apertura y por color; líneas más jugadas |
+| Resultado y ritmo | Score global, por control de tiempo (si hay dato), por periodo |
+| Piezas | **Piezas más relevantes** del jugador: p. ej. qué pieza mueve más en medio juego, qué piezas suelen estar presentes en finales ganados/perdidos, actividad relativa (movimientos por tipo de pieza), piezas que más participan en capturas — métricas derivadas del PGN, no opiniones |
+| Fase de partida | Longitud media de partida, resultados según partidas largas vs cortas (proxy de finales) |
+| Muestra | Nº de partidas usadas, fuentes, rango de fechas, desglose online vs OTB |
+
+Reglas de presentación:
+
+- Cada bloque de stats declara **n**, rango temporal y modo (`online` / `otb` / `combined`).
+- Si la muestra es pequeña, se muestra el número; no se inventan conclusiones en prosa.
+- Las stats son el producto; no hay “informe IA” encima.
+
+---
+
+## 3. Stack tecnológico
 
 | Capa | Elección | Motivo |
 |---|---|---|
-| Frontend web | **Next.js (React) + TypeScript + Tailwind CSS** | SSR/SSG para el dashboard, rutas dinámicas por jugador, modo oscuro fácil, ecosistema maduro para tableros interactivos (react-chessboard, chess.js) |
-| App multiplataforma | **PWA (base) + Capacitor** para empaquetar el mismo código como app nativa iOS/Android | Resuelve la distribución a amigos en móvil y escritorio sin duplicar frontend (ver sección 9) |
-| Backend API | **FastAPI (Python)** | El núcleo de valor (Módulos 4–9, 11, 13) es análisis estadístico y de motor sobre PGN, no CRUD tradicional; Python tiene el ecosistema de ajedrez más maduro (`python-chess`) y facilita la integración con Stockfish |
-| Motor de ajedrez / parsing PGN | **python-chess** | Parseo de PGN, generación de FEN, detección de aperturas por ECO, comunicación UCI con Stockfish |
-| Motor de evaluación | **Stockfish** (self-hosted, GPLv3, gratuito) vía protocolo UCI, orquestado desde workers | Analiza cada partida jugada por el rival para detectar errores reales, no solo estadística de resultados (ver sección 7) |
-| Base de datos relacional | **PostgreSQL** | Modelo claramente relacional (jugadores, partidas, torneos, aperturas, evaluaciones); JSONB para campos semi-estructurados de proveedores |
-| Cache / colas | **Redis** | Cache de resultados de proveedores externos, cola de trabajos para ingesta y análisis de motor |
-| Motor IA (informes) | **API de Claude** | Redacta datos ya calculados; nunca calcula estadísticas |
-| Colas de trabajo | **Celery / RQ** | Ingesta, análisis estadístico y análisis de motor son todos asíncronos y potencialmente pesados |
-| Búsqueda de jugadores | **PostgreSQL full-text / trigram (pg_trgm)** | Suficiente para nombre/apellidos/país sin motor de búsqueda dedicado en la v1 |
-| Infraestructura | **Docker Compose** en desarrollo; contenedores independientes por servicio en producción | Frontend, backend, BD, motor de análisis, motor de evaluación e importadores completamente separados |
+| Frontend web | **Next.js (App Router) + React + TypeScript + Tailwind CSS** | Rutas por jugador/partida, SSR opcional, ecosistema maduro para tableros (`react-chessboard`, `chess.js`) |
+| Backend API | **FastAPI (Python)** | Ingesta PGN, agregaciones estadísticas y (opcional) Stockfish; ecosistema `python-chess` |
+| Parsing PGN / lógica ajedrez | **python-chess** (servidor) + **chess.js** (cliente, visor) | Servidor normaliza y calcula stats; cliente anima el tablero jugada a jugada |
+| Motor de evaluación (opcional) | **Stockfish** self-hosted vía UCI | Solo para overlay de evaluación en el visor / métricas de calidad; no es requisito del MVP |
+| Base de datos | **PostgreSQL** | Jugadores, partidas, aperturas, agregados; JSONB donde haga falta |
+| Cache / colas | **Redis** + **Celery** (o RQ en prototipo) | Cache de proveedores; jobs de ingesta y de recálculo de stats |
+| Búsqueda | **PostgreSQL full-text / `pg_trgm`** | Nombre / apellidos / país en v1 |
+| Auth (web) | Cookie HTTP-only + CSRF (o JWT en cookie) | Pensado para navegador |
+| Progreso async | **SSE** o polling | Ingesta / recálculo de stats (“partidas importadas…”) |
+| Infra | **Docker Compose** en dev; servicios separados en prod | Frontend, API, workers, Postgres, Redis |
+
+**Fuera de alcance:** APIs de IA generativa (Claude, OpenAI, etc.), apps nativas / Capacitor / tiendas. PWA opcional más adelante sobre el mismo Next.js.
 
 ---
 
-## 3. Arquitectura general
+## 4. Arquitectura general
 
 ```
-┌─────────────────────────────┐
-│   FRONTEND (Next.js + TS)     │
-│  Dashboard / Buscador /       │
-│  Visor / Informes / Selector  │
-│  de modo (online/OTB/combi)   │
-└──────────────┬────────────────┘
-               │ REST (HTTPS, JWT)
-┌──────────────▼────────────────┐
-│         API GATEWAY             │  FastAPI
-│  Auth · Rate limit ·            │
-│  Orquestación de módulos        │
-└──┬─────────┬─────────┬─────┬───┘
-   │         │         │     │
-┌──▼───┐ ┌───▼────┐ ┌──▼───┐ ┌▼───────────┐
-│Motor  │ │Motor IA │ │Motor │ │Importadores│
-│Análisis│ │(informe)│ │Eval. │ │PGN         │
-│(stats) │ │         │ │(SF)  │ │            │
-└──┬────┘ └───┬────┘ └──┬───┘ └──┬─────────┘
-   │          │         │        │
-┌──▼──────────▼─────────▼────────▼───┐
-│         CAPA DE PROVEEDORES           │  Interfaz común (Módulo 2)
-│  Online: Lichess · Chess.com          │
-│  OTB: Lumbra's Gigabase · TWIC ·      │
-│  YottaChess · 365chess · chessgames · │
-│  Caissabase · chess-results (ID) ·    │
-│  FIDE (metadatos) · PGN manual        │
-└──────────────────┬─────────────────────┘
+┌──────────────────────────────────────────┐
+│  NAVEGADOR                               │
+│  Next.js                                 │
+│  · Buscador / ficha de jugador           │
+│  · ESTADÍSTICAS (color, aperturas, …)    │
+│  · VISOR (partida paso a paso)           │
+│  · Selector modo online/OTB/combinado    │
+└──────────────────┬───────────────────────┘
+                   │ HTTPS (REST + SSE)
+┌──────────────────▼───────────────────────┐
+│              API (FastAPI)                 │
+│     Auth · Rate limit · Orquestación       │
+└──┬──────────────────┬──────────┬─────────┘
+   │                  │          │
+┌──▼──────────┐  ┌────▼────┐  ┌──▼───────────┐
+│ Motor de    │  │ Workers │  │ Importadores │
+│ Estadísticas│  │(+ SF    │  │ PGN          │
+│ (agregados) │  │ opcional)│  │              │
+└──┬──────────┘  └───┬─────┘  └──┬───────────┘
+   │                 │           │
+┌──▼─────────────────▼───────────▼───────────┐
+│           CAPA DE PROVEEDORES                │
+│  Online: Lichess · Chess.com                 │
+│  OTB: Gigabase · TWIC · fallbacks · PGN      │
+└──────────────────┬───────────────────────────┘
                    │
             ┌──────▼──────┐
-            │  PostgreSQL  │
-            │  + Redis     │
-            └──────────────┘
+            │ PostgreSQL  │
+            │ + Redis     │
+            └─────────────┘
 ```
 
-Cada bloque se despliega como servicio independiente; se comunican por API interna, nunca importando código directamente entre capas.
+**Contrato de fronteras:**
+
+- El navegador reproduce partidas y pinta gráficos; no parsea dumps masivos ni ejecuta Stockfish en el flujo principal.
+- Stats y listados de partidas salen de la API; el visor pide el PGN (o la lista de FENs/jugadas) de una `Game`.
+- Sin componente “Motor IA” ni cola de redacción de informes.
 
 ---
 
-## 4. Capa de proveedores (Módulo 2) — patrón central
+## 5. Capa de proveedores — patrón central
 
-Interfaz común que todo proveedor debe implementar:
+Interfaz común:
 
 ```python
 class GameProvider(Protocol):
     name: str
-    game_type: Literal["online", "otb"]           # fijo por proveedor
+    game_type: Literal["online", "otb"]
     reliability: Literal["official", "community", "user_upload"]
 
     def search_player(self, query: PlayerQuery) -> list[PlayerCandidate]: ...
     def fetch_games(self, player_id: PlayerRef, since: date | None) -> list[RawGame]: ...
-    def is_available(self) -> bool:  # health-check, no asumir API siempre viva
-        ...
+    def is_available(self) -> bool: ...
 ```
 
-**Modelo común de partida (`RawGame`)**, normalizado independientemente del proveedor:
+Modelo común (`RawGame`):
 
 ```python
 class RawGame(BaseModel):
-    source: str                  # "lichess" | "chesscom" | "twic" | "lumbrasgigabase" | ...
+    source: str
     game_type: Literal["online", "otb"]
     source_confidence: Literal["official", "community", "user_upload"]
     pgn: str
@@ -112,229 +162,163 @@ class RawGame(BaseModel):
     fetched_at: datetime
 ```
 
-**Deduplicación:** hash normalizado sobre (jugadores, fecha, resultado, primeros N movimientos) — no depende de IDs de proveedor, ya que no todos los tienen.
+**Deduplicación:** hash normalizado sobre (jugadores, fecha, resultado, primeros N movimientos).
 
-### 4.1 Proveedores — lista completa
+### 5.1 Proveedores
 
-**Online:**
+**Online:** Lichess API · Chess.com API  
 
-| Proveedor | Tipo de acceso | Notas |
-|---|---|---|
-| Lichess API | API pública, requiere token | Export por usuario, filtros por fecha |
-| Chess.com API | API pública, sin auth | Archivos mensuales por usuario |
+**OTB:** Lumbra's Gigabase (bulk principal) · TWIC (actualidad) · YottaChess / 365chess / chessgames (fallback por nombre; scraping — revisar ToS) · Caissabase · chess-results (identidad, sin PGN) · FIDE (metadatos) · importación manual PGN desde el navegador  
 
-**OTB:**
+**Orden de prioridad:** Gigabase → TWIC → Lichess/Chess.com → fallbacks web → PGN manual.
 
-| Proveedor | Tipo de acceso | Notas |
-|---|---|---|
-| **Lumbra's Gigabase** | Descarga de dump (PGN/SCID), gratuito | **Fuente OTB principal recomendada**: viene ya separada estrictamente en OTB (~10,3M partidas) y online curado, con deduplicación activa. Ideal como carga bulk periódica |
-| **TWIC** | Boletines PGN semanales, gratuito | Complemento de actualidad para torneos muy recientes |
-| **YottaChess (YottaBase)** | Web buscable por nombre, gratuito | Fallback de búsqueda por nombre |
-| **365chess.com** | Web buscable por nombre, gratis con límites de descarga | Fallback de búsqueda por nombre |
-| **chessgames.com** | Web buscable por nombre, gratis | Mejor cobertura de jugadores conocidos/históricos |
-| **Caissabase** | Descarga de dump único, gratuito | Complemento de bulk |
-| **chess-results.com** | Web (crosstables/pairings), gratis | No da PGN — sirve solo para **confirmar identidad** (ID FIDE, federación) antes de buscar partidas en otra fuente |
-| FIDE (ratings.fide.com) | Web, gratis | Solo metadatos de perfil (Elo, título, federación), no partidas |
-| Importación manual PGN | N/A | Red de seguridad, siempre disponible |
-
-**Importante:** ninguno de los proveedores OTB web (365chess, chessgames, YottaChess) tiene API pública documentada — la ingesta sería scraping HTML. Hay que revisar sus términos de uso, aplicar rate-limiting agresivo con user-agent identificable, y tratarlos como **fallback de baja frecuencia**, no como sincronización masiva constante.
-
-**Orden de prioridad de ingesta:** Lumbra's Gigabase (bulk OTB) → TWIC (actualidad) → Lichess/Chess.com (online) → 365chess/chessgames/YottaChess (fallback por nombre) → importación manual PGN.
+Los proveedores OTB sin API pública se tratan como fallback de baja frecuencia, no como sync masivo.
 
 ---
 
-## 5. Modelo de datos (entidades principales)
+## 6. Modelo de datos
 
-- **Player**: id interno, fide_id (nullable), nombre, apellidos, federación, título, fotos, elos (std/rapid/blitz) con histórico.
-- **PlayerAlias**: nombres alternativos/variantes detectadas en distintas fuentes (para no fusionar perfiles automáticamente, Módulo 1).
-- **Game**: normalizado desde `RawGame`, con FK a `Player` (blancas/negras), `Tournament`, `Opening`, y campo `game_type` ("online"/"otb").
-- **Tournament**: nombre, fechas, formato, fuente.
-- **Opening**: código ECO, nombre, variante — catálogo propio derivado de python-chess/ECO estándar.
-- **EngineEvaluation**: evaluación de motor por jugada (ver sección 7).
-- **AnalysisReport**: snapshot inmutable por (jugador, modo de análisis, fecha de generación, nº de partidas, fuentes usadas) — no se recalcula en caliente, se versiona.
-- **ConfidenceScore**: documenta cómo se calculó cada nivel de confianza (nº de partidas, dispersión temporal, tamaño de muestra por modo, etc.) — trazabilidad exigida desde el inicio.
+- **Player** — id, fide_id, nombre, federación, título, elos, etc.
+- **PlayerAlias** — variantes de nombre por fuente (sin fusionar perfiles a ciegas).
+- **Game** — desde `RawGame`; FK a jugadores, torneo, apertura; `game_type`; PGN (o moves normalizados).
+- **Tournament** — nombre, fechas, formato, fuente.
+- **Opening** — ECO, nombre, variante.
+- **PlayerStatsSnapshot** (opcional) — agregados materializados por (jugador, mode, ventana temporal) para no recalcular en cada request; invalidar al ingerir partidas nuevas.
+- **EngineEvaluation** (opcional, post-MVP) — evaluación por jugada si se activa Stockfish.
+- **User** — cuenta web (login, preferencias); distinto de `Player`.
 
----
-
-## 6. Modos de análisis: online / OTB / combinado
-
-No son pipelines distintos — es un **filtro** sobre datos ya etiquetados en el momento de la ingesta.
-
-- Cada `GameProvider` declara de forma estática su `game_type` (online u OTB), sin heurísticas de clasificación posteriores.
-- La API expone el modo como parámetro explícito:
-
-```
-GET /players/{id}/stats?mode=online|otb|combined
-GET /players/{id}/openings?mode=online|otb|combined&color=white|black
-GET /players/{id}/report?mode=online|otb|combined
-```
-
-- Si no se especifica, el backend devuelve **combinado**, pero marca explícitamente en la respuesta cuántas partidas de cada tipo lo componen — nunca se presenta un número sin decir de qué mezcla sale.
-- El prompt del Informe IA incluye el modo como dato estructurado obligatorio, para que el informe lo declare: *"Se analizaron 92 partidas OTB (fuente principal: Lumbra's Gigabase, TWIC) entre 2021 y 2026. No se han incluido partidas online en este informe."* Esto evita sesgar fortalezas/debilidades mezclando estilos de juego distintos (más arriesgado online, más cuidadoso en torneo) sin avisar.
-- En la UI: selector de 3 estados (Online / OTB / Combinado) en la ficha de jugador, visor de aperturas e informe, sin re-arquitectura de frontend.
+No hay entidad de “informe generado por IA”.
 
 ---
 
-## 7. Motor de evaluación (Stockfish) — análisis por partida y en agregado
+## 7. Modos: online / OTB / combinado
 
-Los Módulos 8–9 (fortalezas/debilidades) dejan de basarse solo en resultados y frecuencia de apertura: con Stockfish se sabe qué movimientos concretos fueron errores.
+Filtro sobre datos ya etiquetados en la ingesta (`game_type` del proveedor).
 
-**Motor elegido:** Stockfish, gratuito y de código abierto (GPLv3), autoalojado vía protocolo UCI. No hay motivo para pagar alternativas comerciales: es el motor más fuerte del mundo actualmente y su licencia permite distribución libre (incluyendo el código fuente).
-
-### 7.1 Análisis por partida individual
-
-1. Se parsea el PGN a la secuencia de posiciones (FEN por jugada) con `python-chess`.
-2. Un worker asíncrono manda cada posición a Stockfish (profundidad configurable, p. ej. 16-18) y recoge la evaluación en centipawns.
-3. Se calcula la pérdida de evaluación (`centipawn loss`) de cada jugada respecto a la mejor jugada del motor.
-4. Clasificación automática con umbrales estándar:
-
-```python
-class MoveClassification(str, Enum):
-    BEST = "best"
-    GOOD = "good"
-    INACCURACY = "inaccuracy"   # cp_loss > 50
-    MISTAKE = "mistake"          # cp_loss > 100
-    BLUNDER = "blunder"          # cp_loss > 300
+```
+GET /api/v1/players/{id}/stats?mode=online|otb|combined
+GET /api/v1/players/{id}/openings?mode=...&color=white|black
+GET /api/v1/players/{id}/games?mode=...
 ```
 
-5. Registro `EngineEvaluation` por jugada:
-
-```python
-class EngineEvaluation(BaseModel):
-    game_id: UUID
-    ply_number: int
-    fen_before: str
-    move_played: str
-    best_move: str
-    eval_before: int        # centipawns
-    eval_after: int
-    centipawn_loss: int
-    classification: MoveClassification
-    game_phase: Literal["opening", "middlegame", "endgame"]
-```
-
-6. Visible en el **Visor de partidas (Módulo 10)**: gráfico de evaluación jugada a jugada, con blunders/errores marcados sobre el tablero.
-
-### 7.2 Análisis agregado — lo que alimenta fortalezas y debilidades
-
-- **Debilidades objetivas por fase de partida:** ¿comete más blunders en el medio juego o en el final?
-- **Debilidades por estructura/apertura:** cruzando `EngineEvaluation` con `Opening`/ECO, se puede afirmar (con partidas suficientes) que el rival juega objetivamente peor en cierto tipo de estructura, no solo que "gana menos" ahí.
-- **Fortalezas objetivas:** aperturas/estructuras con centipawn loss consistentemente bajo, no solo buen resultado (que podría deberse a rivales más débiles).
-- **Momentos críticos recurrentes:** patrones como "blunder recurrente al salir de la apertura, jugadas 12-15", agregando por número de jugada.
-
-Esta capa se combina con `ConfidenceScore`: una debilidad detectada por el motor con pocas partidas de muestra se muestra con confianza baja, igual que las inferencias puramente estadísticas.
-
-### 7.3 Coste computacional y decisiones de diseño
-
-- **Análisis progresivo, no bloqueante:** el informe estadístico se muestra al instante; el análisis de motor se procesa en background con indicador de progreso ("120/243 partidas analizadas con motor").
-- **Profundidad adaptativa:** profundidad baja por defecto para todas las partidas; "análisis profundo" bajo demanda para partidas concretas (para esto, una API externa gratuita tipo Chess-API.com es razonable puntualmente; para el bulk en background, Stockfish self-hosted compensa mejor).
-- **No re-analizar:** cachear `EngineEvaluation` por partida (hash de la partida).
-- **Escalado horizontal:** varios workers en paralelo, cada uno con su propia instancia de Stockfish — trivialmente paralelizable porque cada partida es independiente.
+Por defecto: **combinado**, indicando siempre cuántas partidas de cada tipo entran en el cálculo.  
+En la UI: selector de 3 estados en ficha de jugador, panel de stats y listado/visor.
 
 ---
 
-## 8. Mapeo módulos originales → componentes técnicos
+## 8. Motor de estadísticas
 
-| Módulo original | Componente técnico |
+Cálculos deterministas sobre el conjunto filtrado de `Game` (pandas o SQL agregado). Alimenta la función 2 del producto.
+
+### 8.1 Agregados prioritarios (MVP)
+
+1. **Por color:** partidas, score, % W/D/L con blancas y con negras.
+2. **Por apertura:** top ECO/nombres, frecuencia, score, desglose por color.
+3. **Lista enlazable:** cada celda/stats debe poder abrir el listado de partidas subyacente → visor.
+4. **Piezas (v1):** a partir del PGN parseado, métricas simples por tipo de pieza del jugador (frecuencia de movimientos, capturas realizadas/sufridas, presencia en el último tercio de la partida). Refinar definición en implementación; siempre con `n` visible.
+
+### 8.2 Stockfish (post-MVP, opcional)
+
+Solo si se quiere calidad de jugada en el visor o métricas de “errores por fase”:
+
+- Worker UCI → `EngineEvaluation` por partida.
+- Progreso vía SSE; no bloquea stats básicas ni la reproducción paso a paso.
+- Sin texto generado: solo números (centipawns, clasificación de jugada).
+
+---
+
+## 9. Mapeo funcional → componentes
+
+| Función / capacidad | Componente |
 |---|---|
-| 1. Buscador de jugadores | Endpoint `/players/search` + `PlayerAlias` + capa de proveedores (metadatos) |
-| 2. Agregador de partidas | Capa de proveedores + cola de ingesta asíncrona |
-| 3. Perfil del jugador | Vista agregada sobre `Player` + `Game` (materializada, refrescada por job) |
-| 4–7. Estadísticas / aperturas / repertorio / rendimiento | Motor de Análisis (Python, pandas), filtrable por `mode` |
-| 8–9. Fortalezas / debilidades | Motor de Análisis + Motor de Evaluación (Stockfish) + `ConfidenceScore` |
-| 10. Visor de partidas | React + `chess.js` + `react-chessboard`, con overlay de `EngineEvaluation` |
-| 11. Informe IA | Recibe solo datos ya calculados (estadística + motor), nunca PGN crudo |
-| 12–13. Comparadores | Reutiliza el Motor de Análisis sobre dos `Player` en paralelo |
-| 14. Importación PGN | Proveedor `pgn_upload`, mismo pipeline de normalización |
-| 15. Perfil propio | Mismo modelo `Player`, marcado `is_self=true`, permisos de visibilidad propios |
-| 16. Calculadoras Elo | Módulo stateless independiente, sin dependencia de BD |
-| 17. Dashboard | Vistas agregadas cacheadas en Redis |
+| Buscar rival | Página Next.js + `GET /players/search` + proveedores (metadatos) |
+| Ingesta de partidas | Capa de proveedores + cola async |
+| **Estadísticas** | Motor de Estadísticas + páginas `/players/[id]` (tabs/secciones) |
+| **Visor paso a paso** | `GET /games/{id}` + React + `chess.js` + `react-chessboard` |
+| De stats → partidas | Query `games?opening=…&color=…` → click → visor |
+| Importación PGN | Upload web → mismo pipeline de normalización |
+| Auth / preferencias | `User` + cookies de sesión |
+
+Módulos secundarios (comparador, calculadoras Elo, dashboard) solo si no distraen de los dos pilares; no son MVP.
 
 ---
 
-## 9. API — endpoints principales (borrador)
+## 10. API — endpoints principales (borrador)
+
+Prefijo: `/api/v1`.
 
 ```
-GET  /players/search?q=...
-GET  /players/{id}
-POST /players/{id}/refresh-games              # dispara ingesta asíncrona
-GET  /players/{id}/games?mode=online|otb|combined
-GET  /players/{id}/stats?mode=online|otb|combined
-GET  /players/{id}/openings?mode=...&color=white|black
-GET  /players/{id}/report?mode=online|otb|combined
-POST /players/{id}/report/generate
-GET  /games/{id}/engine-analysis                # jugada a jugada
-POST /pgn/import
-GET  /compare?a={id1}&b={id2}
-GET  /elo/calculators/...
+# Jugador y partidas
+GET  /api/v1/players/search?q=...
+GET  /api/v1/players/{id}
+POST /api/v1/players/{id}/refresh-games
+GET  /api/v1/players/{id}/games?mode=&color=&eco=&from=&to=
+GET  /api/v1/games/{id}                         # PGN + metadatos para el visor
+GET  /api/v1/games/{id}/moves                   # opcional: lista de SAN/FEN precomputada
+
+# Estadísticas
+GET  /api/v1/players/{id}/stats?mode=online|otb|combined
+GET  /api/v1/players/{id}/stats/by-color
+GET  /api/v1/players/{id}/stats/openings?color=white|black
+GET  /api/v1/players/{id}/stats/pieces          # piezas relevantes / actividad
+
+# Jobs / utilidades
+GET  /api/v1/jobs/{id}/events                   # SSE progreso ingesta
+POST /api/v1/pgn/import
+POST /api/v1/auth/login | logout | me
+
+# Opcional post-MVP
+GET  /api/v1/games/{id}/engine-analysis
 ```
+
+CORS y cookies: orígenes explícitos; ideal mismo sitio vía reverse proxy (`/api` detrás del mismo dominio).
 
 ---
 
-## 10. Estrategia multiplataforma — móvil (iOS/Android) y escritorio
-
-Objetivo: un amigo se lo pueda **descargar e instalar** en su móvil (iOS y Android) y en su ordenador, con una sola base de código.
-
-### 10.1 Enfoque: PWA + Capacitor sobre el mismo Next.js
+## 11. Despliegue web
 
 ```
-                 ┌────────────────────────────┐
-                 │   Next.js (código único)     │
-                 │  UI + lógica de cliente       │
-                 └───────────┬────────────────┘
-                             │
-        ┌────────────────────┼────────────────────┐
-        │                    │                    │
-┌───────▼────────┐  ┌────────▼─────────┐ ┌────────▼─────────┐
-│  Web / PWA      │  │  Capacitor (iOS)  │ │ Capacitor (Android)│
-│ Instalable desde│  │  Build nativo,     │ │ Build nativo,      │
-│ el navegador,   │  │  distribución vía  │ │ distribución vía   │
-│ funciona en     │  │  TestFlight o      │ │  APK directo o     │
-│ escritorio y    │  │  App Store         │ │  Play Store        │
-│ móvil sin tienda│  │                    │ │  (interno/cerrado) │
-└─────────────────┘  └────────────────────┘ └─────────────────────┘
+Internet → CDN / reverse proxy (TLS)
+              ├─ Next.js (UI: stats + visor)
+              └─ FastAPI (/api/v1)
+                     ├─ Workers (ingesta, stats; Stockfish opcional)
+                     ├─ PostgreSQL
+                     └─ Redis
 ```
 
-Capacitor empaqueta la misma web app en un contenedor nativo (WebView), reutilizando el 100% del código Next.js — no hay que reescribir el frontend. Si más adelante se quiere presencia real en App Store/Play Store, el mismo proyecto se sube sin duplicar trabajo.
-
-### 10.2 Distribución práctica a amigos (sin revisión de tiendas)
-
-| Plataforma | Vía más rápida para un grupo cerrado |
+| Pieza | Opciones v1 |
 |---|---|
-| **Android** | APK firmado desde Capacitor, compartido directamente (o "internal testing" en Play Console, instalable por enlace) |
-| **iOS** | **TestFlight** — hasta 10.000 testers externos sin revisión completa de App Store, solo un enlace de invitación. Requiere cuenta de desarrollador Apple (99$/año) |
-| **Escritorio** | La PWA instalable desde Chrome/Edge cubre esto sin empaquetado adicional. Un `.exe`/`.dmg` "de verdad" se puede añadir más adelante con **Tauri** |
+| Frontend | Vercel, Cloudflare Pages, o contenedor + Nginx/Caddy |
+| API + workers | Fly.io, Railway, Render, VPS Docker |
+| Postgres / Redis | Managed o contenedores locales |
 
-**Recomendación para el primer lanzamiento:** PWA instalable (Android + escritorio, cero fricción) + TestFlight para iOS.
-
-### 10.3 Impacto en el backend
-
-Ninguno relevante: FastAPI ya es una API REST consumida igual por web, PWA instalada o build de Capacitor. Añadir:
-- **Auth por token (JWT)** en vez de cookies de sesión, para funcionar igual dentro del WebView.
-- **CORS** configurado explícitamente para varios orígenes cliente.
+Móvil: responsive; sin app store. PWA opcional más adelante.
 
 ---
 
-## 11. Escalabilidad futura
+## 12. Escalabilidad futura
 
-- **Detección de blunders avanzada / planes de apertura:** ya cubierto en gran parte por el Motor de Evaluación (sección 7); ampliable a sugerencias de repertorio basadas en huecos detectados en el rival.
-- **Preparación específica para torneo:** filtro adicional sobre el Motor de Análisis (rango de fechas + lista de rivales del torneo).
-- **Exportación PDF:** capa de renderizado sobre `AnalysisReport` (ya versionado e inmutable).
-- **Sincronización con bases de datos personales / entrenamiento por rivales frecuentes:** reutiliza el modelo `Player` con `is_self=true` y el histórico de informes ya generados.
-
----
-
-## 12. Próximos pasos
-
-1. Añadir `game_type` al esquema de BD desde el principio (evita migración posterior).
-2. Prototipar ingesta con **Lumbra's Gigabase** (OTB) + **Lichess** (online) — validar el modelo `Game` con ambos modos antes de sumar el resto de fuentes.
-3. Levantar Stockfish self-hosted en un contenedor de prueba y validar el pipeline Stockfish → `EngineEvaluation` sobre pocas partidas antes de conectarlo al flujo completo.
-4. Definir y validar manualmente los umbrales de `MoveClassification` (inaccuracy/mistake/blunder) contra partidas conocidas.
-5. Construir el Motor de Análisis estadístico sobre los datos ya ingeridos.
-6. Conectar el Informe IA (Módulo 11) al final, cuando ya existan estadísticas y evaluaciones reales que redactar.
-7. Configurar Capacitor sobre el proyecto Next.js en cuanto haya una primera versión navegable del dashboard.
-8. Crear cuenta de Apple Developer si se quiere TestFlight (la aprobación puede tardar días).
+- Más métricas de piezas / estructuras (sin IA: solo agregados sobre PGN).
+- Overlay Stockfish en el visor.
+- Comparador de dos jugadores reutilizando el Motor de Estadísticas.
+- Export CSV/PDF de tablas de stats (plantillas, no texto generado).
+- Preparación por torneo (filtro de rivales + fechas).
+- PWA ligera para “añadir a inicio”.
 
 ---
 
-*Documento final consolidado — sustituye a las versiones anteriores del diseño técnico.*
+## 13. Próximos pasos
+
+1. Esquema BD con `game_type` desde el inicio.
+2. Monorepo: `web/` (Next.js) + `api/` (FastAPI) + `docker-compose.yml`.
+3. Ingesta piloto: **Lichess** (online) + **Gigabase o PGN de prueba** (OTB) → modelo `Game` válido.
+4. **MVP UI #1 — Visor:** listado de partidas + tablero paso a paso.
+5. **MVP UI #2 — Stats:** por color + aperturas + enlace a partidas filtradas.
+6. Métricas de piezas sobre PGN parseado; afinar definición con datos reales.
+7. Selector online/OTB/combinado en ficha y en APIs.
+8. Preview desplegado (URL) para probar en desktop y móvil.
+9. (Opcional) Contenedor Stockfish + overlay en el visor.
+
+---
+
+*Documento centrado en producto web con dos pilares (visor + estadísticas) y sin IA generativa.*
