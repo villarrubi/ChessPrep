@@ -1,0 +1,92 @@
+[Event "Titled Arena"]
+[Site "https://lichess.org/demo001"]
+[Date "2026.07.18"]
+[Round "1"]
+[White "Judit Polgar"]
+[Black "M. Kovacs"]
+[Result "1-0"]
+[WhiteElo "2675"]
+[BlackElo "2512"]
+[ECO "C50"]
+[Opening "Apertura Italiana"]
+[TimeControl "600+5"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. c3 Nf6 5. d4 exd4 6. cxd4 Bb4+ 7. Bd2 Bxd2+ 8. Nbxd2 d5 9. exd5 Nxd5 10. O-O O-O 11. Re1 1-0
+
+[Event "Titled Arena"]
+[Site "https://lichess.org/demo002"]
+[Date "2026.07.12"]
+[Round "2"]
+[White "Judit Polgar"]
+[Black "A. Varga"]
+[Result "1/2-1/2"]
+[WhiteElo "2678"]
+[BlackElo "2601"]
+[ECO "B90"]
+[Opening "Defensa Siciliana"]
+[Variation "Najdorf"]
+[TimeControl "300+3"]
+
+1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 a6 6. Be3 e6 7. f3 b5 8. Qd2 Bb7 9. O-O-O Nbd7 10. g4 1/2-1/2
+
+[Event "Team Battle"]
+[Site "https://lichess.org/demo003"]
+[Date "2026.06.28"]
+[Round "3"]
+[White "Judit Polgar"]
+[Black "R. Szabo"]
+[Result "1-0"]
+[WhiteElo "2669"]
+[BlackElo "2488"]
+[ECO "C02"]
+[Opening "Defensa Francesa"]
+[Variation "Variante del Avance"]
+[TimeControl "900+10"]
+
+1. e4 e6 2. d4 d5 3. e5 c5 4. c3 Nc6 5. Nf3 Qb6 6. a3 Nh6 7. b4 cxd4 8. cxd4 Nf5 9. Bb2 Bd7 1-0
+
+[Event "Rapid Swiss"]
+[Site "https://lichess.org/demo004"]
+[Date "2026.06.15"]
+[Round "4"]
+[White "E. Nagy"]
+[Black "Judit Polgar"]
+[Result "0-1"]
+[WhiteElo "2552"]
+[BlackElo "2672"]
+[ECO "C42"]
+[Opening "Defensa Petrov"]
+[TimeControl "600+5"]
+
+1. e4 e5 2. Nf3 Nf6 3. Nxe5 d6 4. Nf3 Nxe4 5. d4 d5 6. Bd3 Bd6 7. O-O O-O 0-1
+
+[Event "Rapid Swiss"]
+[Site "https://lichess.org/demo005"]
+[Date "2026.05.30"]
+[Round "5"]
+[White "I. Horvath"]
+[Black "Judit Polgar"]
+[Result "1-0"]
+[WhiteElo "2621"]
+[BlackElo "2670"]
+[ECO "D37"]
+[Opening "Gambito de Dama Rehusado"]
+[TimeControl "600+5"]
+
+1. d4 d5 2. c4 e6 3. Nc3 Nf6 4. Bg5 Be7 5. e3 O-O 6. Nf3 h6 7. Bh4 b6 1-0
+
+[Event "Masters Blitz"]
+[Site "https://lichess.org/demo006"]
+[Date "2026.05.18"]
+[Round "6"]
+[White "Judit Polgar"]
+[Black "S. Toth"]
+[Result "0-1"]
+[WhiteElo "2666"]
+[BlackElo "2594"]
+[ECO "E90"]
+[Opening "Defensa India de Rey"]
+[TimeControl "180+2"]
+
+1. d4 Nf6 2. c4 g6 3. Nc3 Bg7 4. e4 d6 5. Nf3 O-O 6. Be2 e5 7. O-O Nc6 8. d5 Ne7 0-1
+

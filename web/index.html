@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="ChessPrep convierte partidas públicas y PGN en una preparación de torneo clara, trazable y accionable."
+    />
+    <meta name="theme-color" content="#10231f" />
+    <title>ChessPrep — Conoce el tablero antes de sentarte</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%2310231f%22/><text x=%2232%22 y=%2246%22 text-anchor=%22middle%22 font-size=%2242%22 fill=%22%23f4f1e9%22>♞</text></svg>" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="site-header">
+        <a class="brand" href="#top" aria-label="ChessPrep, inicio">
+          <span class="brand-mark" aria-hidden="true">♞</span>
+          <span class="brand-name">ChessPrep</span>
+        </a>
+        <nav class="main-nav" aria-label="Navegación principal">
+          <a href="#analisis">Análisis</a>
+          <a href="#partidas">Partidas</a>
+          <button class="button button-ghost button-small" id="open-import" type="button">
+            <span aria-hidden="true">＋</span> Importar PGN
+          </button>
+        </nav>
+        <button class="menu-button" id="menu-button" aria-expanded="false" aria-label="Abrir menú">☰</button>
+      </header>
+
+      <main id="top">
+        <section class="hero" aria-labelledby="hero-title">
+          <div class="hero-copy">
+            <p class="eyebrow"><span></span> Preparación basada en partidas reales</p>
+            <h1 id="hero-title">Conoce el tablero<br /><em>antes de sentarte.</em></h1>
+            <p class="hero-lede">
+              Descubre los hábitos de tu próximo rival. Repertorio, resultados y partidas,
+              unidos en un análisis que siempre muestra de dónde sale cada dato.
+            </p>
+            <form class="search-form" id="player-search" role="search">
+              <label class="sr-only" for="player-query">Usuario exacto de Lichess</label>
+              <span class="search-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
+              </span>
+              <input
+                id="player-query"
+                name="q"
+                type="search"
+                autocomplete="off"
+                placeholder="Usuario exacto de Lichess…"
+                minlength="2"
+              />
+              <button class="button button-primary" type="submit">Analizar jugador <span>→</span></button>
+            </form>
+            <div class="hero-actions">
+              <button class="text-button" id="load-demo" type="button">
+                Ver análisis de muestra <span aria-hidden="true">↗</span>
+              </button>
+              <span class="hero-note"><i aria-hidden="true"></i> Sin cuentas · sin datos inventados</span>
+            </div>
+          </div>
+
+          <aside class="hero-card" aria-label="Vista previa del producto">
+            <div class="hero-card-topline">
+              <span>Informe de preparación</span>
+              <span class="live-badge"><i></i> Listo</span>
+            </div>
+            <div class="opponent-mini">
+              <div class="mini-avatar">JP</div>
+              <div>
+                <p><span class="title-badge">GM</span> Jugador de muestra</p>
+                <h2>Judit Polgár</h2>
+              </div>
+              <span class="rating-mini">2675</span>
+            </div>
+            <div class="mini-board-wrap" aria-hidden="true">
+              <div class="mini-board" id="mini-board"></div>
+              <div class="mini-callout callout-one"><span>01</span> Repertorio principal</div>
+              <div class="mini-callout callout-two"><span>02</span> Partidas trazables</div>
+            </div>
+            <div class="mini-stats">
+              <div><span>Score global</span><strong>62,5%</strong></div>
+              <div><span>Partidas</span><strong>12</strong></div>
+              <div><span>Fuentes</span><strong>2</strong></div>
+            </div>
+          </aside>
+        </section>
+
+        <section class="trust-strip" aria-label="Características principales">
+          <div><span class="trust-number">01</span><p><strong>Datos verificables</strong> Cada cifra enlaza a sus partidas.</p></div>
+          <div><span class="trust-number">02</span><p><strong>Dos mundos</strong> Online y tablero presencial, separados.</p></div>
+          <div><span class="trust-number">03</span><p><strong>Estudio activo</strong> Recorre cualquier partida jugada a jugada.</p></div>
+        </section>
+
+        <section class="workbench" id="analisis" aria-live="polite">
+          <div class="section-heading-row">
+            <div>
+              <p class="section-kicker">Dossier del rival</p>
+              <h2>Tu mesa de preparación</h2>
+            </div>
+            <div class="mode-switch" role="group" aria-label="Tipo de partidas">
+              <button type="button" data-mode="combined" class="active">Combinado</button>
+              <button type="button" data-mode="online">Online</button>
+              <button type="button" data-mode="otb">OTB</button>
+            </div>
+          </div>
+
+          <div class="player-banner">
+            <div class="player-identity">
+              <div class="player-avatar" id="player-avatar">JP</div>
+              <div>
+                <div class="player-name-line">
+                  <span class="title-badge" id="player-title">GM</span>
+                  <h3 id="player-name">Judit Polgár</h3>
+                  <span class="verified-mark" title="Fuente identificada">✓</span>
+                </div>
+                <p id="player-meta">2675 · Hungría · Datos de muestra</p>
+              </div>
+            </div>
+            <div class="trace-summary" id="trace-summary">
+              <div><span>Muestra</span><strong id="trace-sample">12 partidas</strong></div>
+              <div><span>Periodo</span><strong id="trace-range">feb — jul 2026</strong></div>
+              <div><span>Fuentes</span><strong id="trace-sources">Lichess + PGN</strong></div>
+              <button class="icon-button" id="refresh-player" type="button" title="Actualizar partidas" aria-label="Actualizar partidas">
+                <svg viewBox="0 0 24 24"><path d="M20 6v5h-5"></path><path d="M4 18v-5h5"></path><path d="M6.1 9a7 7 0 0 1 11.4-2.4L20 9M4 15l2.5 2.4A7 7 0 0 0 17.9 15"></path></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="metrics-grid" id="metrics-grid">
+            <article class="metric-card metric-featured">
+              <div class="metric-top"><span>Score global</span><span class="metric-icon">◎</span></div>
+              <strong id="metric-score">62,5<small>%</small></strong>
+              <p id="metric-record">6 victorias · 3 tablas · 3 derrotas</p>
+              <div class="metric-rule"><i id="metric-score-bar" style="width: 62.5%"></i></div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-top"><span>Con blancas</span><span class="piece-chip light">♙</span></div>
+              <strong id="metric-white">71,4<small>%</small></strong>
+              <p id="metric-white-record">n = 7 partidas</p>
+              <span class="metric-foot positive" id="metric-white-form">4V · 2T · 1D</span>
+            </article>
+            <article class="metric-card">
+              <div class="metric-top"><span>Con negras</span><span class="piece-chip dark">♟</span></div>
+              <strong id="metric-black">50,0<small>%</small></strong>
+              <p id="metric-black-record">n = 5 partidas</p>
+              <span class="metric-foot" id="metric-black-form">2V · 1T · 2D</span>
+            </article>
+            <article class="metric-card">
+              <div class="metric-top"><span>Forma reciente</span><span class="metric-icon">↗</span></div>
+              <div class="form-dots" id="form-dots" aria-label="Resultados recientes"></div>
+              <p id="recent-label">Últimas 8 partidas</p>
+              <span class="metric-foot" id="metric-date">Actualizado con la muestra</span>
+            </article>
+          </div>
+
+          <div class="analysis-grid">
+            <article class="panel openings-panel">
+              <div class="panel-header">
+                <div><p class="panel-eyebrow">Repertorio</p><h3>Aperturas más frecuentes</h3></div>
+                <div class="color-filter" role="group" aria-label="Filtrar aperturas por color">
+                  <button class="active" type="button" data-opening-color="all">Todas</button>
+                  <button type="button" data-opening-color="white">Blancas</button>
+                  <button type="button" data-opening-color="black">Negras</button>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>Apertura</th><th>Color</th><th>Partidas</th><th>Score</th><th></th></tr></thead>
+                  <tbody id="openings-body"></tbody>
+                </table>
+              </div>
+              <p class="panel-footnote">Selecciona una apertura para ver las partidas que forman el dato.</p>
+            </article>
+
+            <article class="panel color-panel">
+              <div class="panel-header compact">
+                <div><p class="panel-eyebrow">Balance</p><h3>Resultados por color</h3></div>
+              </div>
+              <div id="color-breakdown"></div>
+              <div class="legend"><span><i class="win"></i> Victoria</span><span><i class="draw"></i> Tablas</span><span><i class="loss"></i> Derrota</span></div>
+              <div class="sample-note" id="sample-note">
+                <span aria-hidden="true">i</span>
+                <p><strong>Muestra visible</strong> Los porcentajes siempre se acompañan del número de partidas.</p>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="games-section" id="partidas">
+          <div class="section-heading-row games-heading">
+            <div><p class="section-kicker">Archivo trazable</p><h2>Partidas de la muestra</h2></div>
+            <p id="games-count">12 partidas encontradas</p>
+          </div>
+          <div class="games-toolbar">
+            <label class="filter-search">
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
+              <input id="game-search" type="search" placeholder="Buscar rival o evento…" />
+            </label>
+            <select id="filter-color" aria-label="Filtrar por color">
+              <option value="all">Cualquier color</option><option value="white">Blancas</option><option value="black">Negras</option>
+            </select>
+            <select id="filter-result" aria-label="Filtrar por resultado">
+              <option value="all">Cualquier resultado</option><option value="win">Victoria</option><option value="draw">Tablas</option><option value="loss">Derrota</option>
+            </select>
+            <button class="clear-filters" id="clear-filters" type="button">Limpiar filtros</button>
+          </div>
+          <div class="active-filter" id="active-filter" hidden></div>
+          <div class="games-list" id="games-list"></div>
+          <div class="empty-state" id="games-empty" hidden>
+            <span>♟</span><h3>No hay partidas con estos filtros</h3><p>Prueba otra combinación o vuelve a la muestra completa.</p>
+          </div>
+        </section>
+
+        <section class="closing-cta">
+          <div><p class="section-kicker light">Tu propio archivo</p><h2>¿Tienes las partidas?<br /><em>Nosotros ponemos el orden.</em></h2></div>
+          <div><p>Importa un PGN de torneo. Se procesa de forma temporal, sin cuentas ni almacenamiento permanente.</p><button class="button button-light" id="open-import-bottom" type="button">Importar archivo PGN <span>→</span></button></div>
+        </section>
+      </main>
+
+      <footer>
+        <a class="brand footer-brand" href="#top"><span class="brand-mark">♞</span><span class="brand-name">ChessPrep</span></a>
+        <p>Preparación ajedrecística basada en hechos.</p>
+        <div><a href="/api/docs" target="_blank" rel="noreferrer">API</a><span>·</span><span>Datos temporales</span><span>·</span><span>Sin IA generativa</span></div>
+      </footer>
+    </div>
+
+    <div class="dialog-backdrop" id="import-dialog" hidden>
+      <section class="dialog import-dialog" role="dialog" aria-modal="true" aria-labelledby="import-title">
+        <button class="dialog-close" type="button" data-close-dialog="import-dialog" aria-label="Cerrar">×</button>
+        <p class="section-kicker">Importación temporal</p>
+        <h2 id="import-title">Añade tus partidas PGN</h2>
+        <p class="dialog-lede">El archivo vive solo durante esta sesión. Analizaremos cabeceras, jugadas, aperturas y duplicados.</p>
+        <label class="drop-zone" id="drop-zone" for="pgn-file">
+          <input id="pgn-file" type="file" accept=".pgn,application/x-chess-pgn,text/plain" />
+          <span class="upload-icon">↥</span>
+          <strong>Arrastra un PGN o selecciónalo</strong>
+          <small>Uno o varios juegos · se eliminarán al caducar</small>
+        </label>
+        <div class="selected-file" id="selected-file" hidden></div>
+        <label class="field-label" for="target-player">Jugador que quieres estudiar <span>(opcional)</span></label>
+        <input class="text-field" id="target-player" placeholder="Ej. Judit Polgar" />
+        <div class="dialog-actions">
+          <button class="button button-ghost" type="button" data-close-dialog="import-dialog">Cancelar</button>
+          <button class="button button-primary" id="submit-import" type="button" disabled>Procesar partidas <span>→</span></button>
+        </div>
+      </section>
+    </div>
+
+    <div class="dialog-backdrop viewer-backdrop" id="viewer-dialog" hidden>
+      <section class="dialog viewer-dialog" role="dialog" aria-modal="true" aria-labelledby="viewer-title">
+        <button class="dialog-close viewer-close" type="button" data-close-dialog="viewer-dialog" aria-label="Cerrar visor">×</button>
+        <div class="viewer-board-column">
+          <div class="board-player board-player-top" id="board-player-top"></div>
+          <div class="chessboard" id="chessboard" aria-label="Tablero de ajedrez"></div>
+          <div class="board-player" id="board-player-bottom"></div>
+        </div>
+        <div class="viewer-info">
+          <div class="viewer-heading">
+            <p class="section-kicker">Visor de partida</p>
+            <h2 id="viewer-title">Partida</h2>
+            <div class="viewer-tags" id="viewer-tags"></div>
+          </div>
+          <div class="move-progress"><span id="move-label">Posición inicial</span><span id="move-count">0 / 0</span></div>
+          <div class="moves-list" id="moves-list" tabindex="0" aria-label="Lista de jugadas"></div>
+          <div class="viewer-controls" role="group" aria-label="Navegación de la partida">
+            <button type="button" data-move="first" title="Primera posición">|‹</button>
+            <button type="button" data-move="prev" title="Jugada anterior">‹</button>
+            <button class="play-button" type="button" data-move="play" title="Reproducir">▶</button>
+            <button type="button" data-move="next" title="Jugada siguiente">›</button>
+            <button type="button" data-move="last" title="Última posición">›|</button>
+          </div>
+          <p class="keyboard-tip"><kbd>←</kbd><kbd>→</kbd> para navegar · <kbd>Esc</kbd> para cerrar</p>
+          <div class="viewer-source" id="viewer-source"></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="loading-layer" id="loading-layer" hidden aria-live="assertive">
+      <div class="loader-piece">♞</div><p id="loading-text">Preparando el tablero…</p>
+    </div>
+    <div class="toast-region" id="toast-region" aria-live="polite"></div>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
+

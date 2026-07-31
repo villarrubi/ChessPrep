@@ -1,0 +1,85 @@
+from __future__ import annotations
+
+from datetime import datetime
+from enum import Enum
+
+from pydantic import BaseModel, Field
+
+
+class GameType(str, Enum):
+    ONLINE = "online"
+    OTB = "otb"
+
+
+class Mode(str, Enum):
+    ONLINE = "online"
+    OTB = "otb"
+    COMBINED = "combined"
+
+
+class PlayerRef(BaseModel):
+    source: str
+    external_id: str
+    username: str
+    display_name: str
+    title: str | None = None
+    rating: int | None = None
+    country: str | None = None
+    avatar_url: str | None = None
+    game_type: GameType = GameType.ONLINE
+
+
+class NormalizedGame(BaseModel):
+    id: str
+    source: str
+    source_game_id: str | None = None
+    source_confidence: str
+    game_type: GameType
+    white: str
+    black: str
+    white_elo: int | None = None
+    black_elo: int | None = None
+    result: str
+    date: str | None = None
+    event: str | None = None
+    site: str | None = None
+    eco: str | None = None
+    opening: str
+    time_control: str | None = None
+    time_class: str | None = None
+    player_color: str
+    target_player: str
+    ply_count: int
+    moves: list[str]
+    moves_uci: list[str]
+    fens: list[str]
+    pgn: str
+    dedupe_hash: str
+
+
+class TemporaryDataset(BaseModel):
+    dataset_id: str
+    player: PlayerRef
+    games: list[NormalizedGame]
+    sources: list[str]
+    created_at: datetime
+    expires_at: datetime
+
+
+class DatasetCreate(BaseModel):
+    pgn: str = Field(min_length=8)
+    target_player: str | None = None
+    game_type: GameType = GameType.OTB
+
+
+class SearchResponse(BaseModel):
+    results: list[PlayerRef]
+    provider_available: bool
+    message: str | None = None
+
+
+class ApiError(BaseModel):
+    code: str
+    message: str
+    detail: str | None = None
+

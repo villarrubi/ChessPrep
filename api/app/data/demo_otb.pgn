@@ -1,0 +1,91 @@
+[Event "Budapest Masters"]
+[Site "Budapest HUN"]
+[Date "2026.04.22"]
+[Round "1"]
+[White "Judit Polgar"]
+[Black "L. Farkas"]
+[Result "1-0"]
+[WhiteElo "2671"]
+[BlackElo "2577"]
+[ECO "B12"]
+[Opening "Defensa Caro-Kann"]
+[TimeControl "5400+30"]
+
+1. e4 c6 2. d4 d5 3. e5 Bf5 4. Nf3 e6 5. Be2 c5 6. O-O Nc6 7. Be3 1-0
+
+[Event "Budapest Masters"]
+[Site "Budapest HUN"]
+[Date "2026.04.21"]
+[Round "2"]
+[White "D. Biro"]
+[Black "Judit Polgar"]
+[Result "1/2-1/2"]
+[WhiteElo "2640"]
+[BlackElo "2671"]
+[ECO "E20"]
+[Opening "Defensa Nimzoindia"]
+[TimeControl "5400+30"]
+
+1. d4 Nf6 2. c4 e6 3. Nc3 Bb4 4. e3 O-O 5. Bd3 d5 6. Nf3 c5 7. O-O 1/2-1/2
+
+[Event "European Club Cup"]
+[Site "Rhodes GRE"]
+[Date "2026.03.17"]
+[Round "3"]
+[White "Judit Polgar"]
+[Black "K. Novak"]
+[Result "1-0"]
+[WhiteElo "2668"]
+[BlackElo "2610"]
+[ECO "C65"]
+[Opening "Apertura Española"]
+[Variation "Defensa Berlinesa"]
+[TimeControl "5400+30"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bb5 Nf6 4. O-O Nxe4 5. d4 Nd6 6. Bxc6 dxc6 7. dxe5 Nf5 1-0
+
+[Event "European Club Cup"]
+[Site "Rhodes GRE"]
+[Date "2026.03.15"]
+[Round "4"]
+[White "P. Molnar"]
+[Black "Judit Polgar"]
+[Result "0-1"]
+[WhiteElo "2535"]
+[BlackElo "2668"]
+[ECO "D85"]
+[Opening "Defensa Grünfeld"]
+[TimeControl "5400+30"]
+
+1. d4 Nf6 2. c4 g6 3. Nc3 d5 4. cxd5 Nxd5 5. e4 Nxc3 6. bxc3 Bg7 7. Nf3 c5 0-1
+
+[Event "Danube Open"]
+[Site "Vienna AUT"]
+[Date "2026.02.09"]
+[Round "5"]
+[White "Judit Polgar"]
+[Black "N. Klein"]
+[Result "1/2-1/2"]
+[WhiteElo "2670"]
+[BlackElo "2582"]
+[ECO "C50"]
+[Opening "Apertura Italiana"]
+[TimeControl "5400+30"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. c3 Nf6 5. d4 exd4 6. cxd4 Bb4+ 7. Bd2 Bxd2+ 8. Nbxd2 1/2-1/2
+
+[Event "Danube Open"]
+[Site "Vienna AUT"]
+[Date "2026.02.07"]
+[Round "6"]
+[White "T. Kiss"]
+[Black "Judit Polgar"]
+[Result "1-0"]
+[WhiteElo "2605"]
+[BlackElo "2670"]
+[ECO "D37"]
+[Opening "Gambito de Dama Rehusado"]
+[TimeControl "5400+30"]
+
+1. d4 d5 2. c4 e6 3. Nc3 Nf6 4. Bg5 Be7 5. e3 O-O 6. Nf3 h6 7. Bh4 b6 1-0
+
