@@ -33,6 +33,7 @@ class PlayerRef(BaseModel):
     rating: int | None = None
     country: str | None = None
     avatar_url: str | None = None
+    fide_id: str | None = None
     game_type: GameType = GameType.ONLINE
 
 
@@ -46,6 +47,8 @@ class NormalizedGame(BaseModel):
     black: str
     white_elo: int | None = None
     black_elo: int | None = None
+    white_fide_id: str | None = None
+    black_fide_id: str | None = None
     result: str
     date: str | None = None
     event: str | None = None
@@ -75,14 +78,25 @@ class TemporaryDataset(BaseModel):
 
 class DatasetCreate(BaseModel):
     pgn: str = Field(min_length=8)
-    target_player: str | None = None
     game_type: GameType = GameType.OTB
     merge_with_dataset_id: str | None = None
+    fide_id: str | None = Field(default=None, pattern=r"^\d{5,10}$")
 
 
 class CombinedPlayerCreate(BaseModel):
     lichess_username: str | None = Field(default=None, min_length=2, max_length=80)
     chesscom_username: str | None = Field(default=None, min_length=2, max_length=80)
+
+
+class FidePlayer(BaseModel):
+    fide_id: str
+    name: str
+    federation: str | None = None
+    title: str | None = None
+    standard_rating: int | None = None
+    rapid_rating: int | None = None
+    blitz_rating: int | None = None
+    profile_url: str
 
 
 

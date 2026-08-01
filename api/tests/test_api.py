@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from api.app.main import app
-from api.app.models import GameType, PlayerRef
+from api.app.models import FidePlayer, GameType, PlayerRef
 from api.app.services.pgn import parse_pgn
 
 
@@ -39,10 +39,26 @@ def test_filters_and_game_traceability():
     assert len(detail.json()["fens"]) == len(detail.json()["moves"]) + 1
 
 
-def test_import_pgn_deduplicates():
+def fide_player(fide_id="1000001", name="Alice Smith"):
+    return FidePlayer(
+        fide_id=fide_id,
+        name=name,
+        federation="España",
+        title="GM",
+        standard_rating=2400,
+        rapid_rating=2350,
+        blitz_rating=2300,
+        profile_url=f"https://ratings.fide.com/profile/{fide_id}",
+    )
+
+
+def test_import_pgn_deduplicates(monkeypatch):
+    import api.app.main as main_module
+
+    monkeypatch.setattr(main_module, "get_fide_player", lambda _: fide_player())
     pgn = """[Event \"Test\"]
 [Date \"2026.01.01\"]
-[White \"Alice\"]
+[White \"Alice Smith\"]
 [Black \"Bob\"]
 [Result \"1-0\"]
 
@@ -50,14 +66,21 @@ def test_import_pgn_deduplicates():
 """
     response = client.post(
         "/api/v1/datasets",
-        json={"pgn": pgn + "\n" + pgn, "target_player": "Alice", "game_type": "otb"},
+        json={"pgn": pgn + "\n" + pgn, "fide_id": "1000001", "game_type": "otb"},
     )
     assert response.status_code == 201
     assert len(response.json()["dataset"]["games"]) == 1
     assert response.json()["duplicates"] == 1
 
 
-def test_imported_otb_games_can_extend_an_online_dossier():
+def test_imported_otb_games_can_extend_an_online_dossier(monkeypatch):
+    import api.app.main as main_module
+
+    monkeypatch.setattr(
+        main_module,
+        "get_fide_player",
+        lambda _: fide_player(fide_id="700070", name="Polgar, Judit"),
+    )
     demo = client.get("/api/v1/demo").json()
     pgn = """[Event "Local OTB"]
 [Date "2026.08.01"]
@@ -70,7 +93,7 @@ def test_imported_otb_games_can_extend_an_online_dossier():
         "/api/v1/datasets",
         json={
             "pgn": pgn,
-            "target_player": "Judit Polgar",
+            "fide_id": "700070",
             "game_type": "otb",
             "merge_with_dataset_id": demo["dataset_id"],
         },
@@ -80,6 +103,37 @@ def test_imported_otb_games_can_extend_an_online_dossier():
     assert payload["merged_games"] == 1
     assert len(payload["dataset"]["games"]) == 13
     assert payload["dataset"]["player"]["source"] == "combined"
+    assert payload["dataset"]["player"]["fide_id"] == "700070"
+
+
+def test_otb_import_requires_a_fide_id():
+    pgn = """[Event "Test"]
+[White "Alice Smith"]
+[Black "Bob"]
+[Result "1-0"]
+1. e4 e5 1-0
+"""
+    response = client.post("/api/v1/datasets", json={"pgn": pgn, "game_type": "otb"})
+    assert response.status_code == 422
+    assert "ID FIDE" in response.json()["detail"]
+
+
+def test_otb_import_rejects_games_from_another_player(monkeypatch):
+    import api.app.main as main_module
+
+    monkeypatch.setattr(main_module, "get_fide_player", lambda _: fide_player(name="Alice Smith"))
+    pgn = """[Event "Test"]
+[White "Bob Jones"]
+[Black "Carol Brown"]
+[Result "1-0"]
+1. e4 e5 1-0
+"""
+    response = client.post(
+        "/api/v1/datasets",
+        json={"pgn": pgn, "fide_id": "1000001", "game_type": "otb"},
+    )
+    assert response.status_code == 422
+    assert "no contiene partidas verificables" in response.json()["detail"]
 
 
 def test_combined_profiles_merge_sources(monkeypatch):

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import re
 import hashlib
 from pathlib import Path
 
@@ -19,6 +18,11 @@ from api.app.providers.lichess import (
     ProviderUnavailable as LichessUnavailable,
     fetch_games as fetch_lichess_games,
     get_player as get_lichess_player,
+)
+from api.app.providers.fide import (
+    ProviderUnavailable as FideUnavailable,
+    get_player as get_fide_player,
+    verified_color,
 )
 from api.app.services.pgn import parse_pgn
 from api.app.services.stats import calculate_stats, filter_games
@@ -374,6 +378,16 @@ def game_detail(source: str, game_id: str):
     return game
 
 
+@app.get("/api/v1/fide/players/{fide_id}")
+def fide_player_detail(fide_id: str):
+    try:
+        return get_fide_player(fide_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FideUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @app.post("/api/v1/datasets", status_code=201)
 def create_dataset(payload: DatasetCreate):
     base_dataset = None
@@ -381,52 +395,102 @@ def create_dataset(payload: DatasetCreate):
         base_dataset = store.get(payload.merge_with_dataset_id)
         if not base_dataset:
             raise HTTPException(status_code=404, detail="El dossier que querías ampliar ha caducado.")
-    target_player = payload.target_player or (base_dataset.player.display_name if base_dataset else None)
+
+    if payload.game_type != GameType.OTB:
+        raise HTTPException(status_code=422, detail="Este importador solo admite partidas OTB.")
+    if not payload.fide_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Para importar partidas OTB necesitas un ID FIDE válido.",
+        )
+    try:
+        fide_player = get_fide_player(payload.fide_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FideUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     parsed = parse_pgn(
         payload.pgn,
         source="pgn_import",
         game_type=payload.game_type,
-        target_player=target_player,
+        target_player=fide_player.name,
         confidence="user_upload",
     )
     if not parsed.games:
         detail = parsed.errors[0] if parsed.errors else "No se pudo procesar el PGN."
         raise HTTPException(status_code=422, detail=detail)
+
+    verified_games = []
+    rejected_games = 0
+    for game in parsed.games:
+        color = verified_color(game, fide_player)
+        if not color:
+            rejected_games += 1
+            continue
+        verified_games.append(
+            game.model_copy(update={"player_color": color, "target_player": fide_player.name})
+        )
+    if not verified_games:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"El PGN no contiene partidas verificables de {fide_player.name} "
+                f"(ID FIDE {fide_player.fide_id})."
+            ),
+        )
+    warnings = list(parsed.errors)
+    if rejected_games:
+        warnings.append(
+            f"Se omitieron {rejected_games} partidas porque el jugador FIDE no figuraba en sus cabeceras."
+        )
+
     if base_dataset:
         merged_games = {}
-        for game in [*base_dataset.games, *parsed.games]:
+        for game in [*base_dataset.games, *verified_games]:
             merged_games.setdefault(game.dedupe_hash, game)
-        cross_duplicates = len(base_dataset.games) + len(parsed.games) - len(merged_games)
+        cross_duplicates = len(base_dataset.games) + len(verified_games) - len(merged_games)
         identity = f"{base_dataset.player.source}|{base_dataset.player.external_id}|otb"
         merged_player = base_dataset.player.model_copy(
             update={
                 "source": "combined",
                 "external_id": hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16],
+                "display_name": fide_player.name,
+                "title": base_dataset.player.title or fide_player.title,
+                "rating": base_dataset.player.rating or fide_player.standard_rating,
+                "country": base_dataset.player.country or fide_player.federation,
+                "fide_id": fide_player.fide_id,
             }
         )
         dataset = store.create(merged_player, list(merged_games.values()))
         return {
             "dataset": dataset,
-            "warnings": parsed.errors,
+            "fide_player": fide_player,
+            "warnings": warnings,
             "duplicates": parsed.duplicates + cross_duplicates,
-            "merged_games": len(parsed.games) - cross_duplicates,
+            "rejected_games": rejected_games,
+            "merged_games": len(verified_games) - cross_duplicates,
         }
 
-    target = target_player or parsed.games[0].target_player
-    slug = re.sub(r"[^a-z0-9]+", "-", target.casefold()).strip("-") or "jugador-importado"
     player = PlayerRef(
-        source="upload",
-        external_id=f"{slug}-{parsed.games[0].dedupe_hash[:6]}",
-        username=target,
-        display_name=target,
+        source="fide",
+        external_id=fide_player.fide_id,
+        username=fide_player.name,
+        display_name=fide_player.name,
+        title=fide_player.title,
+        rating=fide_player.standard_rating,
+        country=fide_player.federation,
+        fide_id=fide_player.fide_id,
         game_type=payload.game_type,
     )
-    dataset = store.create(player, parsed.games)
+    dataset = store.create(player, verified_games)
     return {
         "dataset": dataset,
-        "warnings": parsed.errors,
+        "fide_player": fide_player,
+        "warnings": warnings,
         "duplicates": parsed.duplicates,
-        "merged_games": len(parsed.games),
+        "rejected_games": rejected_games,
+        "merged_games": len(verified_games),
     }
 
 

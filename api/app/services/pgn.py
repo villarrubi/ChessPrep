@@ -188,6 +188,8 @@ def parse_pgn(
                 black=black,
                 white_elo=_safe_int(headers.get("WhiteElo")),
                 black_elo=_safe_int(headers.get("BlackElo")),
+                white_fide_id=headers.get("WhiteFideId") or headers.get("WhiteFideID"),
+                black_fide_id=headers.get("BlackFideId") or headers.get("BlackFideID"),
                 result=result,
                 date=date,
                 event=headers.get("Event") if headers.get("Event") != "?" else None,

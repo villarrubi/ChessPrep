@@ -239,17 +239,29 @@
       <section class="dialog import-dialog" role="dialog" aria-modal="true" aria-labelledby="import-title">
         <button class="dialog-close" type="button" data-close-dialog="import-dialog" aria-label="Cerrar">×</button>
         <p class="section-kicker">Importación temporal</p>
-        <h2 id="import-title">Añade tus partidas PGN</h2>
-        <p class="dialog-lede">El archivo vive solo durante esta sesión. Analizaremos cabeceras, jugadas, aperturas y duplicados.</p>
+        <h2 id="import-title">Partidas OTB verificadas</h2>
+        <p class="dialog-lede">Identifica primero al jugador con su ID FIDE. Después solo se admitirán las partidas del PGN que correspondan a esa ficha oficial.</p>
+        <label class="field-label" for="fide-id">ID FIDE <span>(obligatorio)</span></label>
+        <div class="fide-verify-row">
+          <input class="text-field" id="fide-id" inputmode="numeric" autocomplete="off" pattern="[0-9]{5,10}" placeholder="Ej. 1503014" aria-describedby="fide-help" />
+          <button class="button button-secondary" id="verify-fide" type="button">Verificar</button>
+        </div>
+        <p class="field-help" id="fide-help">Usaremos la ficha pública de ratings.fide.com para comprobar la identidad.</p>
+        <div class="fide-profile-card" id="fide-profile" hidden>
+          <span class="fide-verified-icon" aria-hidden="true">✓</span>
+          <div class="fide-profile-identity">
+            <strong id="fide-profile-name"></strong>
+            <span id="fide-profile-meta"></span>
+          </div>
+          <div class="fide-ratings" id="fide-profile-ratings"></div>
+        </div>
         <label class="drop-zone" id="drop-zone" for="pgn-file">
           <input id="pgn-file" type="file" accept=".pgn,application/x-chess-pgn,text/plain" />
           <span class="upload-icon">↥</span>
           <strong>Arrastra un PGN o selecciónalo</strong>
-          <small>Uno o varios juegos · se eliminarán al caducar</small>
+          <small>Debe incluir al jugador verificado como blancas o negras</small>
         </label>
         <div class="selected-file" id="selected-file" hidden></div>
-        <label class="field-label" for="target-player">Jugador que quieres estudiar <span>(opcional)</span></label>
-        <input class="text-field" id="target-player" placeholder="Ej. Judit Polgar" />
         <div class="dialog-actions">
           <button class="button button-ghost" type="button" data-close-dialog="import-dialog">Cancelar</button>
           <button class="button button-primary" id="submit-import" type="button" disabled>Procesar partidas <span>→</span></button>

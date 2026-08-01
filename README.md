@@ -12,7 +12,7 @@ Aplicación web de preparación ajedrecística para torneos. Convierte partidas 
 - Lista de partidas con filtros por texto, color, resultado y apertura.
 - Navegación desde una estadística hasta las partidas que la forman.
 - Visor con posiciones FEN validadas, controles, reproducción y teclado.
-- Importación PGN con validación, deduplicación y dataset temporal con TTL.
+- Importación OTB mediante ID FIDE obligatorio y PGN, con verificación de identidad, deduplicación y dataset temporal con TTL.
 - Datos de muestra integrados para que el producto funcione sin red.
 - API OpenAPI documentada en `/api/docs`.
 - Sin cuentas, base de datos, Redis, colas ni IA generativa.
@@ -79,6 +79,7 @@ GET  /api/v1/players/{source}/{external_id}/stats
 GET  /api/v1/players/{source}/{external_id}/stats/by-color
 GET  /api/v1/players/{source}/{external_id}/stats/openings
 GET  /api/v1/games/{source}/{game_id}
+GET  /api/v1/fide/players/{fide_id}
 POST /api/v1/datasets
 GET  /api/v1/datasets/{dataset_id}/games
 GET  /api/v1/datasets/{dataset_id}/stats
@@ -95,4 +96,4 @@ Copia `.env.example` si quieres modificar:
 - `CHESSPREP_CHESSCOM_MAX_GAMES`: máximo de partidas de Chess.com por actualización.
 - `CHESSPREP_CORS_ORIGINS`: orígenes admitidos por la API.
 
-La disponibilidad de Lichess y Chess.com depende de sus servicios públicos. Si una fuente no responde, el dossier combinado utiliza las demás que estén disponibles. Las partidas OTB se incorporan mediante PGN porque no existe una API pública universal de búsqueda por jugador.
+La disponibilidad de Lichess, Chess.com y la ficha pública de FIDE depende de sus respectivos servicios. Si una plataforma online no responde, el dossier combinado utiliza las demás que estén disponibles. Para añadir partidas OTB se exige un ID FIDE válido: ChessPrep verifica la identidad oficial y acepta únicamente las partidas del PGN donde ese jugador aparece como blancas o negras. El ID FIDE identifica al jugador, pero no proporciona por sí solo las jugadas; por eso sigue siendo necesario importar el PGN.

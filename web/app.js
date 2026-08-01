@@ -13,6 +13,7 @@ const state = {
   ply: 0,
   playTimer: null,
   pgnText: "",
+  fideProfile: null,
   datasetId: null,
 };
 
@@ -57,7 +58,7 @@ function shortRange(range) {
 }
 
 function sourceLabel(source) {
-  return ({ lichess: "Lichess", "chess.com": "Chess.com", combined: "Lichess + Chess.com", pgn_import: "PGN OTB", demo: "Muestra", upload: "PGN OTB" })[source] || source;
+  return ({ lichess: "Lichess", "chess.com": "Chess.com", combined: "Fuentes combinadas", fide: "FIDE OTB", pgn_import: "PGN OTB", demo: "Muestra", upload: "PGN OTB" })[source] || source;
 }
 
 function paceLabel(pace) {
@@ -488,32 +489,86 @@ async function readPgnFile(file) {
   state.pgnText = await file.text();
   $("#selected-file").hidden = false;
   $("#selected-file").textContent = `✓ ${file.name} · ${(file.size / 1024).toLocaleString("es-ES", { maximumFractionDigits: 1 })} KB`;
-  $("#submit-import").disabled = state.pgnText.trim().length < 8;
+  updateImportReady();
+}
+
+function updateImportReady() {
+  const currentId = $("#fide-id").value.trim();
+  $("#submit-import").disabled = !(
+    state.pgnText.trim().length >= 8 &&
+    state.fideProfile?.fide_id === currentId
+  );
+}
+
+function resetFideProfile() {
+  state.fideProfile = null;
+  $("#fide-profile").hidden = true;
+  updateImportReady();
+}
+
+async function verifyFidePlayer() {
+  const fideId = $("#fide-id").value.trim();
+  if (!/^\d{5,10}$/.test(fideId)) {
+    resetFideProfile();
+    toast("ID FIDE no válido", "Escribe entre 5 y 10 cifras.", "error");
+    return;
+  }
+  const button = $("#verify-fide");
+  button.disabled = true;
+  button.textContent = "Comprobando…";
+  resetFideProfile();
+  try {
+    const player = await api(`/fide/players/${encodeURIComponent(fideId)}`);
+    if ($("#fide-id").value.trim() !== fideId) return;
+    state.fideProfile = player;
+    $("#fide-profile-name").textContent = player.name;
+    $("#fide-profile-meta").textContent = [player.title, player.federation, `ID ${player.fide_id}`].filter(Boolean).join(" · ");
+    const ratings = [
+      ["Lenta", player.standard_rating],
+      ["Rápida", player.rapid_rating],
+      ["Blitz", player.blitz_rating],
+    ].filter(([, rating]) => rating);
+    $("#fide-profile-ratings").innerHTML = ratings
+      .map(([label, rating]) => `<span>${escapeHtml(label)} ${escapeHtml(rating)}</span>`)
+      .join("");
+    $("#fide-profile").hidden = false;
+    updateImportReady();
+    toast("Jugador FIDE verificado", player.name);
+  } catch (error) {
+    resetFideProfile();
+    toast("No se pudo verificar el ID FIDE", error.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Verificar";
+  }
 }
 
 async function submitImport() {
-  if (!state.pgnText) return;
-  const target = $("#target-player").value.trim();
+  if (!state.pgnText || !state.fideProfile) return;
   closeDialog("import-dialog");
-  setLoading(true, "Validando y ordenando las partidas…");
+  setLoading(true, "Verificando identidad y ordenando las partidas…");
   try {
     const result = await api("/datasets", {
       method: "POST",
       body: JSON.stringify({
         pgn: state.pgnText,
-        target_player: target || null,
         game_type: "otb",
         merge_with_dataset_id: state.datasetId,
+        fide_id: state.fideProfile.fide_id,
       }),
     });
     state.pace = "global";
     $$("[data-pace]").forEach((button) => button.classList.toggle("active", button.dataset.pace === "global"));
     await loadPlayer(result.dataset.player, { scroll: true });
     const duplicateNote = result.duplicates ? ` · ${result.duplicates} duplicadas omitidas` : "";
-    toast("PGN procesado", `${result.merged_games} partidas OTB añadidas · ${result.dataset.games.length} en el dossier${duplicateNote}.`);
+    const rejectedNote = result.rejected_games ? ` · ${result.rejected_games} no pertenecían al jugador` : "";
+    toast("PGN FIDE procesado", `${result.merged_games} partidas OTB añadidas · ${result.dataset.games.length} en el dossier${duplicateNote}${rejectedNote}.`);
     state.pgnText = "";
+    state.fideProfile = null;
     $("#pgn-file").value = "";
+    $("#fide-id").value = "";
     $("#selected-file").hidden = true;
+    $("#fide-profile").hidden = true;
     $("#submit-import").disabled = true;
   } catch (error) {
     setLoading(false);
@@ -522,8 +577,9 @@ async function submitImport() {
 }
 
 function openImportDialog() {
-  if (state.player && !$("#target-player").value.trim()) {
-    $("#target-player").value = state.player.display_name;
+  if (state.player?.fide_id && !$("#fide-id").value.trim()) {
+    $("#fide-id").value = state.player.fide_id;
+    resetFideProfile();
   }
   openDialog("import-dialog");
 }
@@ -580,6 +636,11 @@ function bindEvents() {
   $$('[data-close-dialog]').forEach((button) => button.addEventListener("click", () => closeDialog(button.dataset.closeDialog)));
   $$(".dialog-backdrop").forEach((backdrop) => backdrop.addEventListener("mousedown", (event) => { if (event.target === backdrop) closeDialog(backdrop.id); }));
   $("#pgn-file").addEventListener("change", (event) => readPgnFile(event.target.files[0]));
+  $("#fide-id").addEventListener("input", resetFideProfile);
+  $("#fide-id").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") { event.preventDefault(); verifyFidePlayer(); }
+  });
+  $("#verify-fide").addEventListener("click", verifyFidePlayer);
   $("#submit-import").addEventListener("click", submitImport);
   $("#submit-combine").addEventListener("click", submitCombinedProfiles);
   const drop = $("#drop-zone");
