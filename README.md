@@ -102,5 +102,13 @@ Copia `.env.example` si quieres modificar:
 - `CHESSPREP_LICHESS_MAX_GAMES`: máximo de partidas por actualización.
 - `CHESSPREP_CHESSCOM_MAX_GAMES`: máximo de partidas de Chess.com por actualización.
 - `CHESSPREP_CORS_ORIGINS`: orígenes admitidos por la API.
+- `CHESSPREP_ALLOWED_HOSTS`: nombres de host admitidos, sin protocolo ni puerto.
+- `CHESSPREP_ENABLE_DOCS`: activa o desactiva `/api/docs` y el esquema OpenAPI.
+
+## Seguridad al desplegar
+
+La aplicación trata nombres, eventos y cabeceras PGN como texto, aplica codificación contextual en el navegador y normaliza los campos externos antes de guardarlos temporalmente. También limita los PGN a 5 MB y 500 partidas, restringe las URLs consultadas a los proveedores previstos y envía CSP, anti-framing, `nosniff`, política de permisos y otras cabeceras defensivas. El Nginx incluido añade además límite de cuerpo y limitación básica de peticiones a la API.
+
+Antes de publicar, configura `CHESSPREP_ALLOWED_HOSTS` con el dominio exacto y `CHESSPREP_CORS_ORIGINS` con el origen HTTPS real. Si no necesitas la documentación interactiva, usa `CHESSPREP_ENABLE_DOCS=false`. Termina TLS en el proxy o plataforma de despliegue y configura HSTS allí; no se incluye HSTS en el contenedor porque el entorno local funciona por HTTP.
 
 La disponibilidad de Lichess, Chess.com y la ficha pública de FIDE depende de sus respectivos servicios. Si una plataforma online no responde, el dossier combinado utiliza las demás que estén disponibles. Para añadir partidas OTB se exige un ID FIDE válido: ChessPrep verifica la identidad oficial y acepta únicamente las partidas del PGN donde ese jugador aparece como blancas o negras. El ID FIDE identifica al jugador, pero no proporciona por sí solo las jugadas; por eso sigue siendo necesario importar el PGN.

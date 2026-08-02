@@ -7,10 +7,12 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from api.app.models import FidePlayer, NormalizedGame
+from api.app.services.text import clean_untrusted_text
 
 
 BASE_URL = "https://ratings.fide.com"
 USER_AGENT = "ChessPrep/1.0 (FIDE identity verification; github.com/villarrubi/Chess-Tournament-Assistant)"
+MAX_RESPONSE_BYTES = 2_000_000
 TITLE_CODES = {
     "grandmaster": "GM",
     "international master": "IM",
@@ -34,7 +36,10 @@ def _get_html(fide_id: str, timeout: int = 15) -> str:
     )
     try:
         with urlopen(request, timeout=timeout) as response:
-            return response.read().decode("utf-8", errors="replace")
+            body = response.read(MAX_RESPONSE_BYTES + 1)
+            if len(body) > MAX_RESPONSE_BYTES:
+                raise ProviderUnavailable("La respuesta de FIDE supera el límite permitido.")
+            return body.decode("utf-8", errors="replace")
     except HTTPError as exc:
         if exc.code == 404:
             raise LookupError("No existe una ficha pública con ese ID FIDE.") from exc
@@ -45,7 +50,7 @@ def _get_html(fide_id: str, timeout: int = 15) -> str:
 
 def _clean_fragment(fragment: str) -> str:
     without_tags = re.sub(r"<[^>]+>", " ", fragment)
-    return re.sub(r"\s+", " ", html.unescape(without_tags)).strip()
+    return clean_untrusted_text(html.unescape(without_tags), max_length=240)
 
 
 def _match(html_text: str, pattern: str) -> str | None:

@@ -52,4 +52,4 @@ if (-not $SkipInstall) {
 }
 
 Write-Host "ChessPrep disponible en http://localhost:8000" -ForegroundColor Green
-& $VirtualPython -m uvicorn api.app.main:app --reload --host 127.0.0.1 --port 8000
+& $VirtualPython -m uvicorn api.app.main:app --reload --host 127.0.0.1 --port 8000 --no-server-header

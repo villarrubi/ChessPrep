@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-import os
 import hashlib
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from api.app.models import CombinedPlayerCreate, DatasetCreate, GameType, Mode, Pace, PlayerRef
 from api.app.providers.chesscom import (
@@ -29,12 +31,49 @@ from api.app.services.stats import calculate_stats, filter_games
 from api.app.services.store import store
 
 
+MAX_REQUEST_BYTES = 6_000_000
+ENABLE_API_DOCS = os.getenv("CHESSPREP_ENABLE_DOCS", "true").strip().casefold() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+CONTENT_SECURITY_POLICY = "; ".join(
+    (
+        "default-src 'self'",
+        "base-uri 'none'",
+        "object-src 'none'",
+        "frame-ancestors 'none'",
+        "form-action 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data:",
+        "font-src 'self'",
+        "connect-src 'self'",
+        "worker-src 'self'",
+        "manifest-src 'self'",
+    )
+)
+DOCS_CONTENT_SECURITY_POLICY = "; ".join(
+    (
+        "default-src 'self'",
+        "base-uri 'none'",
+        "object-src 'none'",
+        "frame-ancestors 'none'",
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+        "img-src 'self' data: https://fastapi.tiangolo.com",
+        "connect-src 'self'",
+    )
+)
+
+
 app = FastAPI(
     title="ChessPrep API",
     version="1.0.0",
     description="API determinista para preparar torneos con partidas PGN trazables.",
-    docs_url="/api/docs",
-    openapi_url="/api/openapi.json",
+    docs_url="/api/docs" if ENABLE_API_DOCS else None,
+    openapi_url="/api/openapi.json" if ENABLE_API_DOCS else None,
 )
 
 origins = [
@@ -49,8 +88,57 @@ app.add_middleware(
     allow_origins=origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Accept", "Content-Type"],
 )
+allowed_hosts = [
+    item.strip()
+    for item in os.getenv(
+        "CHESSPREP_ALLOWED_HOSTS", "localhost,127.0.0.1,[::1],testserver"
+    ).split(",")
+    if item.strip()
+]
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+
+
+@app.middleware("http")
+async def protect_http_boundary(request, call_next):
+    """Reject oversized bodies and apply browser defenses to every response."""
+
+    response = None
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            too_large = int(content_length) > MAX_REQUEST_BYTES
+        except ValueError:
+            response = JSONResponse(
+                status_code=400, content={"detail": "Content-Length no válido."}
+            )
+        else:
+            if too_large:
+                response = JSONResponse(
+                    status_code=413,
+                    content={"detail": "La petición supera el límite de 6 MB."},
+                )
+    if response is None:
+        response = await call_next(request)
+
+    docs_request = request.url.path in {"/api/docs", "/api/docs/"}
+    response.headers["Content-Security-Policy"] = (
+        DOCS_CONTENT_SECURITY_POLICY if docs_request else CONTENT_SECURITY_POLICY
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    )
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+    response.headers["X-XSS-Protection"] = "0"
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
 DEMO_PLAYER = PlayerRef(

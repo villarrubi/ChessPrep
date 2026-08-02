@@ -15,6 +15,30 @@ def test_health_and_demo_are_available():
     assert demo.json()["games"] == 12
 
 
+def test_security_headers_are_applied_to_api_and_web():
+    for path in ("/", "/api/v1/health"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert "default-src 'self'" in response.headers["content-security-policy"]
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["x-frame-options"] == "DENY"
+        assert response.headers["referrer-policy"] == "no-referrer"
+        assert response.headers["x-xss-protection"] == "0"
+
+
+def test_untrusted_host_and_oversized_request_are_rejected():
+    invalid_host = client.get("/api/v1/health", headers={"host": "attacker.example"})
+    assert invalid_host.status_code == 400
+
+    oversized = client.post(
+        "/api/v1/datasets",
+        content=b"{}",
+        headers={"content-type": "application/json", "content-length": "6000001"},
+    )
+    assert oversized.status_code == 413
+    assert oversized.headers["x-content-type-options"] == "nosniff"
+
+
 def test_demo_stats_are_traced_and_consistent():
     response = client.get("/api/v1/players/demo/judit-polgar/stats?mode=combined")
     assert response.status_code == 200
@@ -71,6 +95,30 @@ def test_import_pgn_deduplicates(monkeypatch):
     assert response.status_code == 201
     assert len(response.json()["dataset"]["games"]) == 1
     assert response.json()["duplicates"] == 1
+
+
+def test_imported_markup_remains_plain_json_data(monkeypatch):
+    import api.app.main as main_module
+
+    monkeypatch.setattr(main_module, "get_fide_player", lambda _: fide_player())
+    payload = "<img src=x onerror=alert(1)>"
+    pgn = f'''[Event "{payload}"]
+[White "Alice Smith"]
+[Black "<svg onload=alert(2)>"]
+[Result "1-0"]
+
+1. e4 e5 1-0
+'''
+    response = client.post(
+        "/api/v1/datasets",
+        json={"pgn": pgn, "fide_id": "1000001", "game_type": "otb"},
+    )
+    assert response.status_code == 201
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.headers["x-content-type-options"] == "nosniff"
+    game = response.json()["dataset"]["games"][0]
+    assert game["event"] == payload
+    assert game["black"] == "<svg onload=alert(2)>"
 
 
 def test_imported_otb_games_can_extend_an_online_dossier(monkeypatch):

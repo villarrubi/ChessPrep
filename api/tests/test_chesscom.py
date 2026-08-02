@@ -1,3 +1,5 @@
+import pytest
+
 from api.app.providers import chesscom
 
 
@@ -18,6 +20,11 @@ SAMPLE_PGN = """[Event "Live Chess"]
 SAMPLE_PGN_2 = SAMPLE_PGN.replace("2026.07.31", "2026.07.30").replace(
     'Black "Opponent"', 'Black "SecondOpponent"'
 ).replace("1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5", "1. d4 d5 2. c4 e6 3. Nc3 Nf6")
+
+
+def test_chesscom_rejects_archive_urls_outside_official_host():
+    with pytest.raises(chesscom.ProviderUnavailable, match="URL de archivo no permitida"):
+        chesscom._get_json("https://attacker.example/internal")
 
 
 def test_chesscom_profile_and_archive_are_normalized(monkeypatch):

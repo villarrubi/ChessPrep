@@ -1,6 +1,7 @@
 "use strict";
 
 const API = "/api/v1";
+const MAX_PGN_BYTES = 5_000_000;
 const state = {
   player: null,
   stats: null,
@@ -133,8 +134,10 @@ function setLoading(visible, text = "Preparando el tablero…") {
 
 function toast(title, message = "", type = "success") {
   const node = document.createElement("div");
-  node.className = `toast ${type}`;
-  node.innerHTML = `<strong>${escapeHtml(title)}</strong>${escapeHtml(message)}`;
+  node.className = `toast ${type === "error" ? "error" : "success"}`;
+  const heading = document.createElement("strong");
+  heading.textContent = String(title ?? "");
+  node.append(heading, document.createTextNode(String(message ?? "")));
   $("#toast-region").append(node);
   setTimeout(() => node.remove(), 4200);
 }
@@ -317,7 +320,7 @@ function renderColors() {
       <div class="wdl-numbers"><span>${row.wins}V</span><span>${row.draws}T</span><span>${row.losses}D</span></div>
     </div>
   `).join("");
-  $("#sample-note").querySelector("p").innerHTML = `<strong>${state.stats.sample_size} partidas · ritmo ${paceLabel(state.pace).toLowerCase()}</strong> ${shortRange(state.stats.date_range)}. ${state.stats.sources.map(sourceLabel).join(" + ")}.`;
+  $("#sample-note").querySelector("p").innerHTML = `<strong>${state.stats.sample_size} partidas · ritmo ${paceLabel(state.pace).toLowerCase()}</strong> ${escapeHtml(shortRange(state.stats.date_range))}. ${state.stats.sources.map((source) => escapeHtml(sourceLabel(source))).join(" + ")}.`;
 }
 
 function selectedGames() {
@@ -412,18 +415,37 @@ function renderViewerMeta() {
   const game = state.viewerGame;
   const opponent = game.player_color === "white" ? game.black : game.white;
   $("#viewer-title").textContent = `${game.target_player} — ${opponent}`;
-  $("#viewer-tags").innerHTML = [game.eco, game.opening, game.result, game.game_type.toUpperCase(), shortDate(game.date)]
-    .filter(Boolean).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("");
-  const white = `${escapeHtml(game.white)}${game.white_elo ? ` <span>${game.white_elo}</span>` : ""}`;
-  const black = `${escapeHtml(game.black)}${game.black_elo ? ` <span>${game.black_elo}</span>` : ""}`;
+  const tags = $("#viewer-tags");
+  tags.replaceChildren(...[game.eco, game.opening, game.result, game.game_type.toUpperCase(), shortDate(game.date)]
+    .filter(Boolean)
+    .map((tag) => {
+      const span = document.createElement("span");
+      span.textContent = String(tag);
+      return span;
+    }));
+  const renderBoardPlayer = (element, piece, name, rating) => {
+    element.replaceChildren(document.createTextNode(`${piece} ${String(name ?? "")}`));
+    if (rating) {
+      const ratingNode = document.createElement("span");
+      ratingNode.textContent = String(rating);
+      element.append(" ", ratingNode);
+    }
+  };
   if (game.player_color === "black") {
-    $("#board-player-top").innerHTML = `♙ ${white}`;
-    $("#board-player-bottom").innerHTML = `♟ ${black}`;
+    renderBoardPlayer($("#board-player-top"), "♙", game.white, game.white_elo);
+    renderBoardPlayer($("#board-player-bottom"), "♟", game.black, game.black_elo);
   } else {
-    $("#board-player-top").innerHTML = `♟ ${black}`;
-    $("#board-player-bottom").innerHTML = `♙ ${white}`;
+    renderBoardPlayer($("#board-player-top"), "♟", game.black, game.black_elo);
+    renderBoardPlayer($("#board-player-bottom"), "♙", game.white, game.white_elo);
   }
-  $("#viewer-source").innerHTML = `<strong>Fuente: ${sourceLabel(game.source)}</strong><br>${escapeHtml(game.event || "Evento sin especificar")} · ${escapeHtml(game.site || "sin enlace externo")} · confianza ${escapeHtml(game.source_confidence)}.`;
+  const source = $("#viewer-source");
+  const sourceHeading = document.createElement("strong");
+  sourceHeading.textContent = `Fuente: ${sourceLabel(game.source)}`;
+  source.replaceChildren(
+    sourceHeading,
+    document.createElement("br"),
+    document.createTextNode(`${game.event || "Evento sin especificar"} · ${game.site || "sin enlace externo"} · confianza ${game.source_confidence}.`),
+  );
 }
 
 function moveGlyphHtml(ply) {
@@ -1036,6 +1058,13 @@ async function readPgnFile(file) {
   if (!file) return;
   if (!file.name.toLowerCase().endsWith(".pgn") && file.type !== "text/plain") {
     toast("Archivo no compatible", "Selecciona un archivo con extensión .pgn.", "error");
+    return;
+  }
+  if (file.size > MAX_PGN_BYTES) {
+    state.pgnText = "";
+    $("#selected-file").hidden = true;
+    updateImportReady();
+    toast("Archivo demasiado grande", "El PGN no puede superar los 5 MB.", "error");
     return;
   }
   state.pgnText = await file.text();

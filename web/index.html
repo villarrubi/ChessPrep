@@ -55,6 +55,7 @@
                 autocomplete="off"
                 placeholder="Usuario común en ambas plataformas…"
                 minlength="2"
+                maxlength="80"
               />
               <button class="button button-primary" type="submit">Analizar jugador <span>→</span></button>
             </form>
@@ -205,7 +206,7 @@
           <div class="games-toolbar">
             <label class="filter-search">
               <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
-              <input id="game-search" type="search" placeholder="Buscar rival o evento…" />
+              <input id="game-search" type="search" maxlength="100" placeholder="Buscar rival o evento…" />
             </label>
             <select id="filter-color" aria-label="Filtrar por color">
               <option value="all">Cualquier color</option><option value="white">Blancas</option><option value="black">Negras</option>
@@ -231,7 +232,7 @@
       <footer>
         <a class="brand footer-brand" href="#top"><span class="brand-mark">♞</span><span class="brand-name">ChessPrep</span></a>
         <p>Preparación ajedrecística basada en hechos.</p>
-        <div><a href="/api/docs" target="_blank" rel="noreferrer">API</a><span>·</span><span>Datos temporales</span><span>·</span><span>Sin IA generativa</span></div>
+        <div><a href="/api/docs" target="_blank" rel="noopener noreferrer">API</a><span>·</span><span>Datos temporales</span><span>·</span><span>Sin IA generativa</span></div>
       </footer>
     </div>
 
@@ -349,12 +350,12 @@
         <div class="provider-fields">
           <label>
             <span><i class="provider-dot lichess"></i> Usuario de Lichess</span>
-            <input class="text-field" id="combine-lichess" placeholder="Ej. DrNykterstein" autocomplete="off" />
+            <input class="text-field" id="combine-lichess" minlength="2" maxlength="80" placeholder="Ej. DrNykterstein" autocomplete="off" />
           </label>
           <div class="provider-join" aria-hidden="true">＋</div>
           <label>
             <span><i class="provider-dot chesscom"></i> Usuario de Chess.com</span>
-            <input class="text-field" id="combine-chesscom" placeholder="Ej. MagnusCarlsen" autocomplete="off" />
+            <input class="text-field" id="combine-chesscom" minlength="2" maxlength="80" placeholder="Ej. MagnusCarlsen" autocomplete="off" />
           </label>
         </div>
         <p class="combine-note">Puedes dejar una plataforma vacía. Cada fuente se identifica por separado en las estadísticas.</p>

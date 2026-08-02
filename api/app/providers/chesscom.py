@@ -3,15 +3,17 @@ from __future__ import annotations
 import json
 import os
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
 
 from api.app.models import GameType, PlayerRef
 from api.app.services.pgn import ParseResult, parse_pgn
+from api.app.services.text import clean_identifier, clean_untrusted_text
 
 
 BASE_URL = "https://api.chess.com"
 USER_AGENT = "ChessPrep/1.0 (public chess preparation tool; github.com/villarrubi/Chess-Tournament-Assistant)"
+MAX_RESPONSE_BYTES = 12_000_000
 
 
 class ProviderUnavailable(RuntimeError):
@@ -19,14 +21,37 @@ class ProviderUnavailable(RuntimeError):
 
 
 def _get_json(url_or_path: str, timeout: int = 10) -> dict:
-    url = url_or_path if url_or_path.startswith("https://") else f"{BASE_URL}{url_or_path}"
+    if url_or_path.startswith("https://"):
+        parsed = urlsplit(url_or_path)
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise ProviderUnavailable(
+                "Chess.com devolvió una URL de archivo no permitida."
+            ) from exc
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "api.chess.com"
+            or port not in {None, 443}
+            or parsed.username
+            or parsed.password
+        ):
+            raise ProviderUnavailable("Chess.com devolvió una URL de archivo no permitida.")
+        url = url_or_path
+    elif url_or_path.startswith("/"):
+        url = f"{BASE_URL}{url_or_path}"
+    else:
+        raise ProviderUnavailable("Chess.com devolvió una ruta de archivo no válida.")
     request = Request(
         url,
         headers={"Accept": "application/json", "User-Agent": USER_AGENT},
     )
     try:
         with urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read())
+            body = response.read(MAX_RESPONSE_BYTES + 1)
+            if len(body) > MAX_RESPONSE_BYTES:
+                raise ProviderUnavailable("La respuesta de Chess.com supera el límite permitido.")
+            return json.loads(body)
     except HTTPError as exc:
         if exc.code in {404, 410}:
             raise LookupError("El jugador no existe en Chess.com.") from exc
@@ -38,10 +63,12 @@ def _get_json(url_or_path: str, timeout: int = 10) -> dict:
 
 
 def get_player(username: str) -> PlayerRef:
-    payload = _get_json(f"/pub/player/{quote(username.lower())}")
+    clean_username = clean_untrusted_text(username, max_length=80)
+    encoded_username = quote(clean_username.lower(), safe="")
+    payload = _get_json(f"/pub/player/{encoded_username}")
     rating = None
     try:
-        stats = _get_json(f"/pub/player/{quote(username.lower())}/stats")
+        stats = _get_json(f"/pub/player/{encoded_username}/stats")
         ratings = [
             stats.get(key, {}).get("last", {}).get("rating")
             for key in ("chess_rapid", "chess_blitz", "chess_bullet", "chess_daily")
@@ -49,16 +76,20 @@ def get_player(username: str) -> PlayerRef:
         rating = max(value for value in ratings if isinstance(value, int))
     except (LookupError, ProviderUnavailable, ValueError):
         pass
-    country_url = payload.get("country", "")
+    provider_username = clean_untrusted_text(payload.get("username") or clean_username, max_length=80)
+    country_url = clean_untrusted_text(payload.get("country"), max_length=300)
+    external_id = clean_identifier(provider_username, max_length=80)
+    if not external_id:
+        raise ProviderUnavailable("Chess.com devolvió un identificador de jugador no válido.")
     return PlayerRef(
         source="chess.com",
-        external_id=payload.get("username", username).lower(),
-        username=payload.get("username", username),
-        display_name=payload.get("name") or payload.get("username", username),
-        title=payload.get("title"),
+        external_id=external_id.lower(),
+        username=provider_username,
+        display_name=clean_untrusted_text(payload.get("name") or provider_username, max_length=160),
+        title=clean_untrusted_text(payload.get("title"), max_length=16) or None,
         rating=rating,
-        country=country_url.rstrip("/").split("/")[-1] or None,
-        avatar_url=payload.get("avatar"),
+        country=clean_identifier(country_url.rstrip("/").split("/")[-1], max_length=16),
+        avatar_url=None,
         game_type=GameType.ONLINE,
     )
 
@@ -80,7 +111,8 @@ def _pgn_with_external_id(game: dict) -> str | None:
 def fetch_games(username: str, max_games: int | None = None) -> ParseResult:
     configured_max = int(os.getenv("CHESSPREP_CHESSCOM_MAX_GAMES", "100"))
     limit = min(max(max_games or configured_max, 1), 100)
-    archive_index = _get_json(f"/pub/player/{quote(username.lower())}/games/archives")
+    encoded_username = quote(clean_untrusted_text(username, max_length=80).lower(), safe="")
+    archive_index = _get_json(f"/pub/player/{encoded_username}/games/archives")
     archives = archive_index.get("archives", [])
     collected: list[str] = []
 

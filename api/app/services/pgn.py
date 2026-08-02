@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import chess.pgn
 
 from api.app.models import GameType, NormalizedGame
+from api.app.services.text import clean_identifier, clean_untrusted_text
 
 
 ECO_NAMES = {
@@ -44,6 +45,7 @@ ECO_NAMES = {
     "E60": "Defensa India de Rey",
     "E90": "Defensa India de Rey",
 }
+MAX_GAMES_PER_IMPORT = 500
 
 
 @dataclass
@@ -84,11 +86,17 @@ def _time_class(control: str | None) -> str | None:
 
 
 def _opening_name(headers: chess.pgn.Headers, eco: str | None) -> str:
-    explicit = headers.get("Opening")
-    variation = headers.get("Variation")
+    explicit = clean_untrusted_text(headers.get("Opening"), max_length=180)
+    variation = clean_untrusted_text(headers.get("Variation"), max_length=120)
     if explicit and explicit not in {"?", "Unknown"}:
-        return f"{explicit} · {variation}" if variation and variation != "?" else explicit
+        opening = f"{explicit} · {variation}" if variation and variation != "?" else explicit
+        return clean_untrusted_text(opening, max_length=240)
     return ECO_NAMES.get(eco or "", "Apertura sin clasificar")
+
+
+def _fide_id(value: str | None) -> str | None:
+    clean = clean_untrusted_text(value, max_length=10)
+    return clean if re.fullmatch(r"\d{5,10}", clean) else None
 
 
 def _target_color(white: str, black: str, target: str | None) -> tuple[str, str]:
@@ -117,20 +125,27 @@ def parse_pgn(
     game_number = 0
 
     while True:
+        if game_number >= MAX_GAMES_PER_IMPORT:
+            errors.append(
+                f"El PGN supera el límite de {MAX_GAMES_PER_IMPORT} partidas por importación."
+            )
+            break
         try:
             game = chess.pgn.read_game(stream)
         except Exception as exc:  # python-chess reports malformed tokens here.
-            errors.append(f"Partida {game_number + 1}: PGN no válido ({exc}).")
+            detail = clean_untrusted_text(exc, max_length=300)
+            errors.append(f"Partida {game_number + 1}: PGN no válido ({detail}).")
             break
         if game is None:
             break
         game_number += 1
         if game.errors:
-            errors.append(f"Partida {game_number}: se ignoraron jugadas no válidas ({game.errors[0]}).")
+            detail = clean_untrusted_text(game.errors[0], max_length=300)
+            errors.append(f"Partida {game_number}: se ignoraron jugadas no válidas ({detail}).")
 
         headers = game.headers
-        white = headers.get("White", "Blancas")
-        black = headers.get("Black", "Negras")
+        white = clean_untrusted_text(headers.get("White"), max_length=160) or "Blancas"
+        black = clean_untrusted_text(headers.get("Black"), max_length=160) or "Negras"
         result = headers.get("Result", "*")
         if result not in {"1-0", "0-1", "1/2-1/2", "*"}:
             result = "*"
@@ -146,14 +161,16 @@ def parse_pgn(
                 board.push(move)
                 fens.append(board.fen())
         except (ValueError, AssertionError) as exc:
-            errors.append(f"Partida {game_number}: secuencia de jugadas incompleta ({exc}).")
+            detail = clean_untrusted_text(exc, max_length=300)
+            errors.append(f"Partida {game_number}: secuencia de jugadas incompleta ({detail}).")
 
         if not san_moves:
             errors.append(f"Partida {game_number}: no contiene jugadas y fue omitida.")
             continue
 
         date = _normalise_date(headers.get("UTCDate") or headers.get("Date"))
-        eco = headers.get("ECO")
+        raw_eco = clean_untrusted_text(headers.get("ECO"), max_length=8).upper()
+        eco = raw_eco if re.fullmatch(r"[A-E]\d{2}", raw_eco) else None
         color, resolved_target = _target_color(white, black, target_player)
         fingerprint = "|".join(
             [white.casefold(), black.casefold(), date or "", result, " ".join(uci_moves[:24])]
@@ -164,10 +181,10 @@ def parse_pgn(
             continue
         seen.add(dedupe_hash)
 
-        source_id = headers.get("GameId")
-        site_header = headers.get("Site", "").strip()
+        source_id = clean_identifier(headers.get("GameId"))
+        site_header = clean_untrusted_text(headers.get("Site"), max_length=500)
         if not source_id and site_header.startswith(("http://", "https://")):
-            source_id = site_header.rstrip("/").split("/")[-1]
+            source_id = clean_identifier(site_header.rstrip("/").split("/")[-1])
         if source_id in {None, "", "?", "-", "Chess.com", "lichess.org"}:
             source_id = None
         short_hash = dedupe_hash[:12]
@@ -188,15 +205,23 @@ def parse_pgn(
                 black=black,
                 white_elo=_safe_int(headers.get("WhiteElo")),
                 black_elo=_safe_int(headers.get("BlackElo")),
-                white_fide_id=headers.get("WhiteFideId") or headers.get("WhiteFideID"),
-                black_fide_id=headers.get("BlackFideId") or headers.get("BlackFideID"),
+                white_fide_id=_fide_id(headers.get("WhiteFideId") or headers.get("WhiteFideID")),
+                black_fide_id=_fide_id(headers.get("BlackFideId") or headers.get("BlackFideID")),
                 result=result,
                 date=date,
-                event=headers.get("Event") if headers.get("Event") != "?" else None,
-                site=headers.get("Site") if headers.get("Site") != "?" else None,
-                eco=eco if eco and eco != "?" else None,
+                event=(
+                    clean_untrusted_text(headers.get("Event"), max_length=240)
+                    if headers.get("Event") != "?"
+                    else None
+                ),
+                site=site_header if site_header and site_header != "?" else None,
+                eco=eco,
                 opening=_opening_name(headers, eco),
-                time_control=headers.get("TimeControl") if headers.get("TimeControl") not in {None, "?", "-"} else None,
+                time_control=(
+                    clean_untrusted_text(headers.get("TimeControl"), max_length=64)
+                    if headers.get("TimeControl") not in {None, "?", "-"}
+                    else None
+                ),
                 time_class=_time_class(headers.get("TimeControl")),
                 player_color=color,
                 target_player=resolved_target,

@@ -6,6 +6,9 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 
+MAX_PGN_CHARACTERS = 5_000_000
+
+
 class GameType(str, Enum):
     ONLINE = "online"
     OTB = "otb"
@@ -77,9 +80,9 @@ class TemporaryDataset(BaseModel):
 
 
 class DatasetCreate(BaseModel):
-    pgn: str = Field(min_length=8)
+    pgn: str = Field(min_length=8, max_length=MAX_PGN_CHARACTERS)
     game_type: GameType = GameType.OTB
-    merge_with_dataset_id: str | None = None
+    merge_with_dataset_id: str | None = Field(default=None, max_length=128)
     fide_id: str | None = Field(default=None, pattern=r"^\d{5,10}$")
 
 
