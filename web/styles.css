@@ -111,9 +111,12 @@ svg:not(.board-arrows) { width: 1.2em; fill: none; stroke: currentColor; stroke-
 .search-form input { min-width: 0; flex: 1; height: 48px; border: 0; outline: 0; background: transparent; color: var(--ink); }
 .search-form input::placeholder { color: #8d948f; }
 .search-form .button { height: 48px; white-space: nowrap; }
-.search-alternative { max-width: 680px; min-height: 54px; margin-top: 10px; padding: 8px 9px 8px 15px; border: 1px solid var(--line); border-radius: 9px; background: rgba(251,250,246,.58); display: flex; align-items: center; justify-content: space-between; gap: 18px; }
-.search-alternative > div { min-width: 0; display: flex; flex-direction: column; }.search-alternative strong { font-family: var(--serif); font-size: 12px; }.search-alternative > div span { margin-top: 1px; color: #7d8681; font-size: 8px; }.search-alternative .button { min-height: 36px; flex: 0 0 auto; }
-.provider-switch { max-width: 680px; margin: 0 0 9px; display: flex; align-items: center; gap: 6px; }
+.search-mode-tabs { max-width: 680px; padding: 5px; border: 1px solid var(--line); border-radius: 12px; background: #eae6dc; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.search-mode-tabs > button { min-width: 0; min-height: 57px; padding: 7px 14px; border: 0; border-radius: 8px; background: transparent; color: #68726d; display: flex; align-items: center; gap: 11px; text-align: left; cursor: pointer; transition: .18s ease; }.search-mode-tabs > button:hover { background: rgba(255,255,255,.48); color: var(--ink); }.search-mode-tabs > button.active { background: var(--paper); color: var(--ink); box-shadow: 0 5px 15px rgba(30,43,37,.09); }.search-mode-tabs > button > span:last-child { min-width: 0; display: flex; flex-direction: column; }.search-mode-tabs strong { font-family: var(--serif); font-size: 13px; }.search-mode-tabs small { margin-top: 1px; color: #89918d; font-size: 7px; font-weight: 700; }
+.search-mode-symbol { width: 29px; height: 29px; flex: 0 0 29px; border-radius: 7px; background: #ded9ce; display: grid; place-items: center; color: var(--forest); font-size: 17px; }.search-mode-symbol.online { display: flex; align-items: center; justify-content: center; }.search-mode-symbol.online i { width: 8px; height: 8px; border-radius: 50%; background: #a27b5c; }.search-mode-symbol.online i + i { margin-left: -2px; background: #81a65e; box-shadow: 0 0 0 2px #ded9ce; }.search-mode-tabs button.active .search-mode-symbol { background: var(--forest); color: white; }.search-mode-tabs button.active .search-mode-symbol.online i + i { box-shadow: 0 0 0 2px var(--forest); }
+.search-mode-panel { max-width: 680px; min-height: 123px; padding-top: 10px; }
+.search-mode-note { min-height: 24px; margin: 8px 2px 0; color: #7a837e; font-size: 9px; line-height: 1.5; }.search-mode-note .text-button { margin-left: 3px; font-size: 9px; }
+.provider-switch { max-width: 680px; margin: 0 0 8px; display: flex; align-items: center; gap: 6px; }
 .provider-switch button { height: 31px; padding: 0 12px; border: 1px solid transparent; border-radius: 16px; background: transparent; color: #6f7974; display: inline-flex; align-items: center; gap: 7px; font-size: 9px; font-weight: 800; cursor: pointer; transition: .18s ease; }
 .provider-switch button:hover { background: rgba(16,35,31,.05); color: var(--ink); }
 .provider-switch button.active { border-color: var(--forest); background: var(--forest); color: var(--cream); box-shadow: 0 5px 13px rgba(16,35,31,.14); }
@@ -462,7 +465,7 @@ footer > p { flex: 1; } footer > div { display: flex; gap: 12px; } footer a:hove
   .hero { padding-top: 47px; }.hero h1 { font-size: 50px; line-height: 1; }.hero-lede { font-size: 15px; }
   .provider-switch { overflow-x: auto; padding-bottom: 2px; }.provider-switch button { flex: 0 0 auto; }
   .search-form { padding: 6px; flex-wrap: wrap; }.search-icon { width: 39px; }.search-form input { min-width: calc(100% - 39px); }.search-form .button { width: 100%; margin-top: 5px; }
-  .search-alternative { align-items: stretch; flex-direction: column; }.search-alternative .button { width: 100%; }
+  .search-mode-tabs > button { padding: 7px 9px; }.search-mode-symbol { display: none; }.search-mode-tabs strong { font-size: 12px; }.search-mode-panel { min-height: 184px; }
   .hero-actions { align-items: flex-start; flex-direction: column; gap: 14px; }.hero-card { min-height: 450px; }.mini-board-wrap { transform: scale(.88); }
   .section-heading-row { align-items: flex-start; flex-direction: column; }.mode-switch { width: 100%; }.mode-switch button { flex: 1; padding: 0 6px; }
   .player-name-line h3 { font-size: 20px; }.player-avatar { width: 50px; height: 50px; }.trace-summary { flex-wrap: wrap; row-gap: 12px; }.trace-summary > div { min-width: 31%; padding: 0 7px; }.trace-summary .icon-button { margin-left: auto; }

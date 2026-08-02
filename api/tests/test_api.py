@@ -33,7 +33,7 @@ def test_loader_cycles_all_pieces_without_disabling_its_timer():
     index = client.get("/").text
     script = client.get("/app.js").text
 
-    assert "/app.js?v=20260802-opponent-filter" in index
+    assert "/app.js?v=20260802-search-parity" in index
     assert 'const LOADER_PIECES = ["♙", "♘", "♗", "♖", "♕", "♔"];' in script
     assert "const LOADER_INTERVAL_MS = 450;" in script
     assert "window.setInterval(advanceLoaderPiece, LOADER_INTERVAL_MS)" in script
@@ -59,16 +59,21 @@ def test_otb_dialog_exposes_info64_search_and_date_filters():
     assert "normalizeInfo64Opponent" in script
 
 
-def test_header_is_clean_and_otb_search_is_next_to_the_main_search():
+def test_header_is_clean_and_online_otb_searches_have_equal_modes():
     index = client.get("/").text
     script = client.get("/app.js").text
 
     assert 'class="main-nav"' not in index
     assert 'id="menu-button"' not in index
-    assert 'class="search-alternative"' in index
-    assert 'id="open-import"' in index
+    assert 'class="search-mode-tabs"' in index
+    assert 'data-search-mode="online"' in index
+    assert 'data-search-mode="otb"' in index
+    assert 'id="hero-otb-search"' in index
+    assert 'id="hero-fide-id"' in index
     assert 'id="open-import-bottom"' in index
     assert "#menu-button" not in script
+    assert "selectHeroSearchMode" in script
+    assert "submitHeroOtbSearch" in script
 
 
 def test_game_result_badges_keep_their_layout_and_use_stable_color_markers():

@@ -10,7 +10,7 @@
     <meta name="theme-color" content="#10231f" />
     <title>ChessPrep — Conoce el tablero antes de sentarte</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%2310231f%22/><text x=%2232%22 y=%2246%22 text-anchor=%22middle%22 font-size=%2242%22 fill=%22%23f4f1e9%22>♞</text></svg>" />
-    <link rel="stylesheet" href="/styles.css?v=20260802-opponent-filter" />
+    <link rel="stylesheet" href="/styles.css?v=20260802-search-parity" />
   </head>
   <body>
     <div class="page-shell">
@@ -30,37 +30,36 @@
               Cruza partidas online, resultados presenciales y PGN para conocer a tu próximo rival.
               Cada muestra conserva su fuente, su periodo y sus límites.
             </p>
-            <div class="provider-switch" role="group" aria-label="Plataformas donde buscar">
-              <button type="button" data-source="all" class="active"><span class="dual-dots"><i></i><i></i></span> Ambas</button>
-              <button type="button" data-source="lichess"><i class="source-dot lichess"></i> Lichess</button>
-              <button type="button" data-source="chess.com"><i class="source-dot chesscom"></i> Chess.com</button>
+            <div class="search-mode-tabs" role="tablist" aria-label="Tipo de partidas que quieres buscar">
+              <button class="active" id="search-mode-online" type="button" role="tab" aria-selected="true" aria-controls="search-panel-online" data-search-mode="online"><span class="search-mode-symbol online" aria-hidden="true"><i></i><i></i></span><span><strong>Online</strong><small>Lichess + Chess.com</small></span></button>
+              <button id="search-mode-otb" type="button" role="tab" aria-selected="false" aria-controls="search-panel-otb" data-search-mode="otb"><span class="search-mode-symbol otb" aria-hidden="true">♙</span><span><strong>Presencial (OTB)</strong><small>FIDE + Info64</small></span></button>
             </div>
-            <form class="search-form" id="player-search" role="search">
-              <label class="sr-only" for="player-query">Usuario exacto de la plataforma</label>
-              <span class="search-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
-              </span>
-              <input
-                id="player-query"
-                name="q"
-                type="search"
-                autocomplete="off"
-                placeholder="Usuario común en ambas plataformas…"
-                minlength="2"
-                maxlength="80"
-              />
-              <button class="button button-primary" type="submit">Analizar jugador <span>→</span></button>
-            </form>
-            <div class="search-alternative">
-              <div><strong>Partidas presenciales</strong><span>Consulta Info64 mediante un ID FIDE</span></div>
-              <button class="button button-ghost button-small" id="open-import" type="button"><span aria-hidden="true">♙</span> Buscar partidas OTB</button>
+            <div class="search-mode-panel" id="search-panel-online" role="tabpanel" aria-labelledby="search-mode-online">
+              <div class="provider-switch" role="group" aria-label="Plataformas online donde buscar">
+                <button type="button" data-source="all" class="active"><span class="dual-dots"><i></i><i></i></span> Ambas</button>
+                <button type="button" data-source="lichess"><i class="source-dot lichess"></i> Lichess</button>
+                <button type="button" data-source="chess.com"><i class="source-dot chesscom"></i> Chess.com</button>
+              </div>
+              <form class="search-form" id="player-search" role="search">
+                <label class="sr-only" for="player-query">Usuario exacto de la plataforma</label>
+                <span class="search-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg></span>
+                <input id="player-query" name="q" type="search" autocomplete="off" placeholder="Usuario común en ambas plataformas…" minlength="2" maxlength="80" />
+                <button class="button button-primary" type="submit">Analizar jugador <span>→</span></button>
+              </form>
+              <p class="search-mode-note">¿Usa alias distintos? <button class="text-button" id="open-combine" type="button">Combinar perfiles</button></p>
+            </div>
+            <div class="search-mode-panel" id="search-panel-otb" role="tabpanel" aria-labelledby="search-mode-otb" hidden>
+              <form class="search-form" id="hero-otb-search" role="search">
+                <label class="sr-only" for="hero-fide-id">ID FIDE del jugador</label>
+                <span class="search-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c.8-4.2 3.5-6.3 8-6.3s7.2 2.1 8 6.3"></path></svg></span>
+                <input id="hero-fide-id" name="fide_id" type="text" inputmode="numeric" autocomplete="off" pattern="[0-9]{5,10}" maxlength="10" placeholder="ID FIDE, por ejemplo 94711151…" />
+                <button class="button button-primary" type="submit">Buscar jugador OTB <span>→</span></button>
+              </form>
+              <p class="search-mode-note">Identidad oficial FIDE y resultados públicos de Info64, con filtros por fechas y rivales.</p>
             </div>
             <div class="hero-actions">
               <button class="text-button" id="load-demo" type="button">
                 Ver análisis de muestra <span aria-hidden="true">↗</span>
-              </button>
-              <button class="text-button" id="open-combine" type="button">
-                Combinar alias distintos <span aria-hidden="true">＋</span>
               </button>
               <span class="hero-note"><i aria-hidden="true"></i> Sin cuentas · sin datos inventados</span>
             </div>
@@ -406,6 +405,6 @@
     <script src="/js/stockfishEngine.js" defer></script>
     <script src="/js/gameAnalysis.js" defer></script>
     <script src="/js/exploreMode.js" defer></script>
-    <script src="/app.js?v=20260802-opponent-filter" defer></script>
+    <script src="/app.js?v=20260802-search-parity" defer></script>
   </body>
 </html>

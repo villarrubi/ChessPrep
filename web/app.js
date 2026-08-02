@@ -344,6 +344,32 @@ async function searchPlayer(event) {
   }
 }
 
+function selectHeroSearchMode(mode) {
+  if (!['online', 'otb'].includes(mode)) return;
+  $$('[data-search-mode]').forEach((button) => {
+    const active = button.dataset.searchMode === mode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  $('#search-panel-online').hidden = mode !== 'online';
+  $('#search-panel-otb').hidden = mode !== 'otb';
+  setTimeout(() => (mode === 'otb' ? $('#hero-fide-id') : $('#player-query')).focus(), 0);
+}
+
+async function submitHeroOtbSearch(event) {
+  event.preventDefault();
+  const fideId = $('#hero-fide-id').value.trim();
+  if (!/^\d{5,10}$/.test(fideId)) {
+    toast('ID FIDE no válido', 'Escribe entre 5 y 10 cifras.', 'error');
+    $('#hero-fide-id').focus();
+    return;
+  }
+  $('#fide-id').value = fideId;
+  resetFideProfile();
+  openDialog('import-dialog');
+  await verifyFidePlayer();
+}
+
 async function switchPace(pace) {
   if (!state.player || state.pace === pace) return;
   state.pace = pace;
@@ -1500,6 +1526,8 @@ async function submitCombinedProfiles() {
 
 function bindEvents() {
   $("#player-search").addEventListener("submit", searchPlayer);
+  $("#hero-otb-search").addEventListener("submit", submitHeroOtbSearch);
+  $$('[data-search-mode]').forEach((button) => button.addEventListener('click', () => selectHeroSearchMode(button.dataset.searchMode)));
   $("#load-demo").addEventListener("click", () => loadDemo(true));
   $("#refresh-player").addEventListener("click", refreshCurrentPlayer);
   $$("[data-pace]").forEach((button) => button.addEventListener("click", () => switchPace(button.dataset.pace)));
@@ -1519,7 +1547,6 @@ function bindEvents() {
   $("#clear-filters").addEventListener("click", () => {
     $("#game-search").value = ""; $("#filter-color").value = "all"; $("#filter-result").value = "all"; state.openingFilter = null; renderGames();
   });
-  $("#open-import").addEventListener("click", openImportDialog);
   $("#open-import-bottom").addEventListener("click", () => {
     $("#manual-import").open = true;
     openImportDialog();
