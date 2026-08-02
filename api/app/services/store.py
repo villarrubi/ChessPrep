@@ -36,11 +36,16 @@ class DatasetStore:
     def create(self, player: PlayerRef, games: list, dataset_id: str | None = None) -> TemporaryDataset:
         self.cleanup()
         now = datetime.now(UTC)
+        ordered_games = sorted(
+            games,
+            key=lambda game: (bool(game.date), game.date or ""),
+            reverse=True,
+        )
         dataset = TemporaryDataset(
             dataset_id=dataset_id or uuid.uuid4().hex[:16],
             player=player,
-            games=games,
-            sources=sorted({game.source for game in games}),
+            games=ordered_games,
+            sources=sorted({game.source for game in ordered_games}),
             created_at=now,
             expires_at=now + self.ttl,
         )
@@ -68,4 +73,3 @@ class DatasetStore:
 
 
 store = DatasetStore()
-

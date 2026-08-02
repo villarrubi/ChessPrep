@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from datetime import date
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
@@ -10,7 +11,16 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from api.app.models import CombinedPlayerCreate, DatasetCreate, GameType, Mode, Pace, PlayerRef
+from api.app.models import (
+    CombinedPlayerCreate,
+    DatasetCreate,
+    GameType,
+    Info64ResultsResponse,
+    Info64Summary,
+    Mode,
+    Pace,
+    PlayerRef,
+)
 from api.app.providers.chesscom import (
     ProviderUnavailable as ChessComUnavailable,
     fetch_games as fetch_chesscom_games,
@@ -25,6 +35,10 @@ from api.app.providers.fide import (
     ProviderUnavailable as FideUnavailable,
     get_player as get_fide_player,
     verified_color,
+)
+from api.app.providers.info64 import (
+    ProviderUnavailable as Info64Unavailable,
+    fetch_results as fetch_info64_results,
 )
 from api.app.services.pgn import parse_pgn
 from api.app.services.stats import calculate_stats, filter_games
@@ -479,6 +493,72 @@ def fide_player_detail(fide_id: str):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except FideUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get(
+    "/api/v1/fide/players/{fide_id}/info64-results",
+    response_model=Info64ResultsResponse,
+)
+def fide_player_info64_results(
+    fide_id: str,
+    date_from: date | None = Query(default=None, alias="from"),
+    date_to: date | None = Query(default=None, alias="to"),
+):
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(
+            status_code=422,
+            detail="La fecha inicial no puede ser posterior a la fecha final.",
+        )
+    try:
+        player = get_fide_player(fide_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FideUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        lookup = fetch_info64_results(player, date_from=date_from, date_to=date_to)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Info64Unavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    results = lookup["results"]
+    wins = sum(result.outcome == "win" for result in results)
+    draws = sum(result.outcome == "draw" for result in results)
+    losses = sum(result.outcome == "loss" for result in results)
+    result_dates = sorted(result.date for result in results if result.date)
+    summary = Info64Summary(
+        games=len(results),
+        wins=wins,
+        draws=draws,
+        losses=losses,
+        score_percentage=round(
+            100 * sum(result.score for result in results) / len(results), 1
+        )
+        if results
+        else 0.0,
+        opponents=len(
+            {
+                result.opponent_fide_id or result.opponent_name.casefold()
+                for result in results
+            }
+        ),
+        tournaments=len({result.tournament_url for result in results}),
+        walkovers=sum(result.walkover for result in results),
+        date_range={
+            "from": result_dates[0] if result_dates else None,
+            "to": result_dates[-1] if result_dates else None,
+        },
+    )
+    return Info64ResultsResponse(
+        player=player,
+        results=results,
+        summary=summary,
+        warnings=lookup["warnings"],
+        source_url=lookup["source_url"],
+        tournaments_scanned=lookup["tournaments_scanned"],
+        tournaments_matched=lookup["tournaments_matched"],
+    )
 
 
 @app.post("/api/v1/datasets", status_code=201)

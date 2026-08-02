@@ -15,6 +15,7 @@ const state = {
   playTimer: null,
   pgnText: "",
   fideProfile: null,
+  info64Results: null,
   datasetId: null,
   analysisEnabled: false,
   analysis: null,
@@ -81,6 +82,73 @@ function shortDate(date) {
   if (parts.length < 3) return date;
   return new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", year: "numeric" })
     .format(new Date(`${date}T12:00:00`));
+}
+
+function parseSpanishDate(value) {
+  const match = String(value || "").trim().match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
+  if (!match) return null;
+  const [, rawDay, rawMonth, rawYear] = match;
+  const day = Number(rawDay);
+  const month = Number(rawMonth);
+  const year = Number(rawYear);
+  if (year < 1900 || year > 2100) return null;
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    candidate.getUTCFullYear() !== year ||
+    candidate.getUTCMonth() !== month - 1 ||
+    candidate.getUTCDate() !== day
+  ) return null;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function spanishDateFromIso(value) {
+  const [year, month, day] = String(value || "").split("-");
+  return year && month && day ? `${day}/${month}/${year}` : "";
+}
+
+function isoFromLocalDate(value) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+function readInfo64Date(id, label) {
+  const field = document.getElementById(id);
+  const raw = field.value.trim();
+  if (!raw) {
+    field.removeAttribute("aria-invalid");
+    return null;
+  }
+  const parsed = parseSpanishDate(raw);
+  if (!parsed) {
+    field.setAttribute("aria-invalid", "true");
+    field.focus();
+    toast(`Fecha ${label.toLowerCase()} no válida`, "Usa el formato dd/mm/aaaa; por ejemplo, 02/08/2026.", "error");
+    return undefined;
+  }
+  field.removeAttribute("aria-invalid");
+  field.value = spanishDateFromIso(parsed);
+  return parsed;
+}
+
+function setInfo64Period(period) {
+  const fromField = $("#info64-from");
+  const toField = $("#info64-to");
+  fromField.removeAttribute("aria-invalid");
+  toField.removeAttribute("aria-invalid");
+  if (period === "all") {
+    fromField.value = "";
+    toField.value = "";
+  } else {
+    const today = new Date();
+    let start;
+    if (period === "year") start = new Date(today.getFullYear(), 0, 1);
+    else {
+      start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      start.setFullYear(start.getFullYear() - (period === "3y" ? 3 : 1));
+    }
+    fromField.value = spanishDateFromIso(isoFromLocalDate(start));
+    toField.value = spanishDateFromIso(isoFromLocalDate(today));
+  }
+  $$('[data-info64-period]').forEach((button) => button.classList.toggle("active", button.dataset.info64Period === period));
 }
 
 function shortRange(range) {
@@ -391,7 +459,7 @@ function selectedGames() {
       (color === "all" || game.player_color === color) &&
       (result === "all" || outcome(game) === result) &&
       matchesOpening;
-  });
+  }).sort((left, right) => (right.date || "").localeCompare(left.date || ""));
 }
 
 function renderGames() {
@@ -401,13 +469,14 @@ function renderGames() {
   $("#games-empty").hidden = games.length > 0;
   $("#games-list").innerHTML = games.map((game) => {
     const result = outcome(game);
+    const resultLetter = ({ win: "V", draw: "T", loss: "D" })[result] || "–";
     const opponent = game.player_color === "white" ? game.black : game.white;
     const opponentElo = game.player_color === "white" ? game.black_elo : game.white_elo;
     return `
       <article class="game-row">
         <div class="game-players">
-          <span class="game-result ${result}" title="${outcomeLabel(result)}">${({win:"V",draw:"T",loss:"D"})[result]}</span>
-          <div><strong>${escapeHtml(opponent)}</strong><span>${game.player_color === "white" ? "♙ Blancas" : "♟ Negras"}${opponentElo ? ` · Rival ${opponentElo}` : ""} · ${escapeHtml(game.result)}</span></div>
+          <span class="game-result ${result}" title="${outcomeLabel(result)}" aria-label="${outcomeLabel(result)}"><b aria-hidden="true">${resultLetter}</b></span>
+          <div><strong>${escapeHtml(opponent)}</strong><span class="game-player-meta"><i class="game-color-icon ${game.player_color}" aria-hidden="true"></i>${game.player_color === "white" ? "Blancas" : "Negras"}${opponentElo ? ` · Rival ${opponentElo}` : ""} · ${escapeHtml(game.result)}</span></div>
         </div>
         <div class="game-detail game-opening"><span>Apertura</span><strong>${escapeHtml(game.eco || "—")} · ${escapeHtml(game.opening)}</strong></div>
         <div class="game-detail game-event"><span>Evento</span><strong>${escapeHtml(game.event || "Partida importada")}</strong></div>
@@ -1147,10 +1216,171 @@ function updateImportReady() {
   );
 }
 
+function safeInfo64Url(value, fallback = "https://info64.org/search-player") {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname === "info64.org" &&
+      (!url.port || url.port === "443") && !url.username && !url.password
+      ? url.href
+      : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function resetInfo64Results() {
+  state.info64Results = null;
+  $("#info64-panel").hidden = true;
+  $("#info64-results").hidden = true;
+  $("#info64-summary").replaceChildren();
+  $("#info64-list").replaceChildren();
+  $("#info64-warnings").replaceChildren();
+  $("#info64-opponent-filter").value = "";
+  $("#info64-federation-filter").value = "all";
+}
+
 function resetFideProfile() {
   state.fideProfile = null;
   $("#fide-profile").hidden = true;
+  resetInfo64Results();
   updateImportReady();
+}
+
+function normalizeInfo64Opponent(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("es")
+    .trim();
+}
+
+function filterInfo64Results(results) {
+  const federation = $("#info64-federation-filter").value;
+  const opponentQuery = normalizeInfo64Opponent($("#info64-opponent-filter").value);
+  return results.filter((result) => {
+    const matchesFederation = federation === "all" ||
+      (federation === "federated" && Boolean(result.opponent_fide_id)) ||
+      (federation === "non-federated" && !result.opponent_fide_id);
+    const opponentText = normalizeInfo64Opponent(
+      `${result.opponent_name} ${result.opponent_fide_id || ""}`
+    );
+    return matchesFederation && (!opponentQuery || opponentText.includes(opponentQuery));
+  });
+}
+
+function summarizeInfo64Results(results) {
+  const wins = results.filter((result) => result.outcome === "win").length;
+  const draws = results.filter((result) => result.outcome === "draw").length;
+  const losses = results.filter((result) => result.outcome === "loss").length;
+  return {
+    games: results.length,
+    wins,
+    draws,
+    losses,
+    score_percentage: results.length
+      ? 100 * results.reduce((total, result) => total + Number(result.score || 0), 0) / results.length
+      : 0,
+    opponents: new Set(results.map((result) => result.opponent_fide_id || result.opponent_name.toLocaleLowerCase("es"))).size,
+    tournaments: new Set(results.map((result) => result.tournament_url)).size,
+  };
+}
+
+function renderInfo64Results(payload) {
+  const results = filterInfo64Results(payload.results);
+  const summary = summarizeInfo64Results(results);
+  const opponentFilter = $("#info64-federation-filter").value;
+  const opponentQuery = $("#info64-opponent-filter").value.trim();
+  const filterLabels = [];
+  if (opponentFilter !== "all") {
+    filterLabels.push(({ federated: "federados", "non-federated": "no federados" })[opponentFilter]);
+  }
+  if (opponentQuery) filterLabels.push(`que coinciden con “${opponentQuery}”`);
+  const filterDescription = filterLabels.length ? ` con el filtro ${filterLabels.join(" y ")}` : "";
+  state.info64Results = payload;
+  $("#info64-results").hidden = false;
+  $("#info64-source-link").href = safeInfo64Url(payload.source_url);
+  $("#info64-summary").innerHTML = [
+    ["Resultados", summary.games],
+    ["Puntuación", `${formatNumber(summary.score_percentage)}%`],
+    ["Victorias", summary.wins],
+    ["Tablas", summary.draws],
+    ["Derrotas", summary.losses],
+  ].map(([label, value]) => `<div><strong>${escapeHtml(value)}</strong><span>${escapeHtml(label)}</span></div>`).join("");
+  $("#info64-match-note").textContent = payload.tournaments_scanned
+    ? `${payload.tournaments_matched} de ${payload.tournaments_scanned} participaciones coincidieron exactamente con el ID FIDE ${payload.player.fide_id}. Se muestran ${results.length} resultados${filterDescription}.`
+    : `Info64 no devolvió participaciones para ${payload.player.name} con este intervalo.`;
+
+  const warnings = $("#info64-warnings");
+  warnings.hidden = !payload.warnings.length;
+  warnings.innerHTML = payload.warnings
+    .map((warning) => `<p><span aria-hidden="true">!</span>${escapeHtml(warning)}</p>`)
+    .join("");
+
+  const list = $("#info64-list");
+  const empty = $("#info64-empty");
+  list.hidden = results.length === 0;
+  empty.hidden = results.length > 0;
+  $("#info64-empty p").textContent = opponentQuery
+    ? `Ningún rival coincide con “${opponentQuery}” dentro de la muestra cargada.`
+    : "Info64 puede no contener ese torneo o no asociar la participación a un ID FIDE.";
+  list.innerHTML = results.map((result) => {
+    const resultClass = ["win", "draw", "loss"].includes(result.outcome) ? result.outcome : "draw";
+    const color = result.color === "white" ? "Blancas" : result.color === "black" ? "Negras" : "Color sin indicar";
+    const round = [result.round ? `Ronda ${result.round}` : null, result.board ? `Mesa ${result.board}` : null].filter(Boolean).join(" · ");
+    const dateLabel = result.date
+      ? `${result.date_precision === "tournament" ? "≈ " : ""}${shortDate(result.date)}${result.time ? ` · ${result.time}` : ""}`
+      : "Fecha desconocida";
+    const rating = result.opponent_rating ? ` · ${result.opponent_rating}` : "";
+    const fideLink = result.opponent_fide_id
+      ? `<a class="info64-fide-link" href="https://ratings.fide.com/profile/${encodeURIComponent(result.opponent_fide_id)}" target="_blank" rel="noopener noreferrer">FIDE ${escapeHtml(result.opponent_fide_id)} ↗</a>`
+      : "<span>Sin ID FIDE publicado</span>";
+    const walkover = result.walkover ? " · incomparecencia" : "";
+    return `<article class="info64-row">
+      <div class="info64-outcome ${resultClass}"><strong>${escapeHtml(result.score)}</strong><span>${escapeHtml(outcomeLabel(result.outcome))}</span></div>
+      <div class="info64-opponent"><span>Rival${rating}</span><strong>${escapeHtml(result.opponent_name)}</strong><div>${fideLink}</div></div>
+      <div class="info64-tournament"><span>${escapeHtml(round || "Ronda sin indicar")}</span><a href="${escapeHtml(safeInfo64Url(result.player_url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(result.tournament)} ↗</a></div>
+      <div class="info64-when"><span>${escapeHtml(color)}${escapeHtml(walkover)}</span><strong>${escapeHtml(dateLabel)}</strong></div>
+    </article>`;
+  }).join("");
+  return summary;
+}
+
+async function searchInfo64Results() {
+  const fideId = $("#fide-id").value.trim();
+  if (!state.fideProfile || state.fideProfile.fide_id !== fideId) {
+    toast("Verifica primero al jugador", "El ID FIDE debe corresponder a una ficha oficial.", "error");
+    return;
+  }
+  const from = readInfo64Date("info64-from", "Desde");
+  if (from === undefined) return;
+  const to = readInfo64Date("info64-to", "Hasta");
+  if (to === undefined) return;
+  if (from && to && from > to) {
+    toast("Intervalo no válido", "La fecha inicial no puede ser posterior a la fecha final.", "error");
+    return;
+  }
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  const button = $("#search-info64");
+  button.disabled = true;
+  button.textContent = "Consultando Info64…";
+  try {
+    const query = params.toString();
+    const suffix = query ? `?${query}` : "";
+    const payload = await api(`/fide/players/${encodeURIComponent(fideId)}/info64-results${suffix}`);
+    if (state.fideProfile?.fide_id !== fideId) return;
+    const visibleSummary = renderInfo64Results(payload);
+    const message = visibleSummary.games
+      ? `${visibleSummary.games} resultados visibles de ${visibleSummary.tournaments} torneos.`
+      : "No se encontraron resultados asociados exactamente a ese ID FIDE.";
+    toast(visibleSummary.games ? "Resultados OTB encontrados" : "Sin resultados OTB", message);
+  } catch (error) {
+    toast("No se pudo consultar Info64", error.message, "error", { persistent: true });
+  } finally {
+    button.disabled = false;
+    button.innerHTML = "Buscar en Info64 <span>→</span>";
+  }
 }
 
 async function verifyFidePlayer() {
@@ -1179,6 +1409,7 @@ async function verifyFidePlayer() {
       .map(([label, rating]) => `<span>${escapeHtml(label)} ${escapeHtml(rating)}</span>`)
       .join("");
     $("#fide-profile").hidden = false;
+    $("#info64-panel").hidden = false;
     updateImportReady();
     toast("Jugador FIDE verificado", player.name);
   } catch (error) {
@@ -1186,7 +1417,7 @@ async function verifyFidePlayer() {
     toast("No se pudo verificar el ID FIDE", error.message, "error");
   } finally {
     button.disabled = false;
-    button.textContent = "Verificar";
+    button.textContent = "Buscar jugador";
   }
 }
 
@@ -1212,10 +1443,13 @@ async function submitImport() {
     toast("PGN FIDE procesado", `${result.merged_games} partidas OTB añadidas · ${result.dataset.games.length} en el dossier${duplicateNote}${rejectedNote}.`);
     state.pgnText = "";
     state.fideProfile = null;
+    state.info64Results = null;
     $("#pgn-file").value = "";
     $("#fide-id").value = "";
     $("#selected-file").hidden = true;
     $("#fide-profile").hidden = true;
+    $("#info64-panel").hidden = true;
+    $("#info64-results").hidden = true;
     $("#submit-import").disabled = true;
   } catch (error) {
     setLoading(false);
@@ -1285,7 +1519,11 @@ function bindEvents() {
   $("#clear-filters").addEventListener("click", () => {
     $("#game-search").value = ""; $("#filter-color").value = "all"; $("#filter-result").value = "all"; state.openingFilter = null; renderGames();
   });
-  ["open-import", "open-import-bottom"].forEach((id) => document.getElementById(id).addEventListener("click", openImportDialog));
+  $("#open-import").addEventListener("click", openImportDialog);
+  $("#open-import-bottom").addEventListener("click", () => {
+    $("#manual-import").open = true;
+    openImportDialog();
+  });
   $("#open-combine").addEventListener("click", () => openDialog("combine-dialog"));
   $$('[data-close-dialog]').forEach((button) => button.addEventListener("click", () => closeDialog(button.dataset.closeDialog)));
   $$(".dialog-backdrop").forEach((backdrop) => backdrop.addEventListener("mousedown", (event) => { if (event.target === backdrop) closeDialog(backdrop.id); }));
@@ -1295,6 +1533,30 @@ function bindEvents() {
     if (event.key === "Enter") { event.preventDefault(); verifyFidePlayer(); }
   });
   $("#verify-fide").addEventListener("click", verifyFidePlayer);
+  $("#search-info64").addEventListener("click", searchInfo64Results);
+  $("#info64-federation-filter").addEventListener("change", () => {
+    if (state.info64Results) renderInfo64Results(state.info64Results);
+  });
+  $("#info64-opponent-filter").addEventListener("input", () => {
+    if (state.info64Results) renderInfo64Results(state.info64Results);
+  });
+  $("#info64-clear-filters").addEventListener("click", () => {
+    $("#info64-opponent-filter").value = "";
+    $("#info64-federation-filter").value = "all";
+    if (state.info64Results) renderInfo64Results(state.info64Results);
+  });
+  ["info64-from", "info64-to"].forEach((id) => {
+    const field = document.getElementById(id);
+    field.addEventListener("input", () => {
+      field.removeAttribute("aria-invalid");
+      $$('[data-info64-period]').forEach((button) => button.classList.remove("active"));
+    });
+    field.addEventListener("blur", () => {
+      const parsed = parseSpanishDate(field.value);
+      if (parsed) field.value = spanishDateFromIso(parsed);
+    });
+  });
+  $$('[data-info64-period]').forEach((button) => button.addEventListener("click", () => setInfo64Period(button.dataset.info64Period)));
   $("#submit-import").addEventListener("click", submitImport);
   $("#submit-combine").addEventListener("click", submitCombinedProfiles);
   const drop = $("#drop-zone");
@@ -1318,11 +1580,6 @@ function bindEvents() {
     });
   });
   syncEngineSettingInputs();
-  $("#menu-button").addEventListener("click", () => {
-    const open = $(".main-nav").classList.toggle("open");
-    $("#menu-button").setAttribute("aria-expanded", String(open));
-  });
-  $$(".main-nav a").forEach((link) => link.addEventListener("click", () => $(".main-nav").classList.remove("open")));
   document.addEventListener("keydown", (event) => {
     if (!$("#viewer-dialog").hidden) {
       const typing = ["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName);

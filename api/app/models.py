@@ -103,6 +103,53 @@ class FidePlayer(BaseModel):
     profile_url: str
 
 
+class Info64Result(BaseModel):
+    id: str
+    source: str = "info64"
+    fide_id: str
+    player_name: str
+    opponent_name: str
+    opponent_fide_id: str | None = None
+    opponent_rating: int | None = None
+    color: str | None = None
+    outcome: str
+    score: float
+    result: str
+    round: str | None = None
+    board: str | None = None
+    date: str | None = None
+    time: str | None = None
+    date_precision: str = "unknown"
+    tournament: str
+    tournament_start: str | None = None
+    tournament_end: str | None = None
+    tournament_url: str
+    player_url: str
+    walkover: bool = False
+
+
+class Info64Summary(BaseModel):
+    games: int
+    wins: int
+    draws: int
+    losses: int
+    score_percentage: float
+    opponents: int
+    tournaments: int
+    walkovers: int
+    date_range: dict[str, str | None]
+
+
+class Info64ResultsResponse(BaseModel):
+    player: FidePlayer
+    results: list[Info64Result]
+    summary: Info64Summary
+    warnings: list[str]
+    source_url: str
+    tournaments_scanned: int
+    tournaments_matched: int
+
+
 
 class SearchResponse(BaseModel):
     results: list[PlayerRef]

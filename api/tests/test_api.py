@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from api.app.main import app
-from api.app.models import FidePlayer, GameType, PlayerRef
+from api.app.models import FidePlayer, GameType, Info64Result, PlayerRef
 from api.app.services.pgn import parse_pgn
 
 
@@ -33,11 +33,52 @@ def test_loader_cycles_all_pieces_without_disabling_its_timer():
     index = client.get("/").text
     script = client.get("/app.js").text
 
-    assert "/app.js?v=20260802-loader2" in index
+    assert "/app.js?v=20260802-opponent-filter" in index
     assert 'const LOADER_PIECES = ["♙", "♘", "♗", "♖", "♕", "♔"];' in script
     assert "const LOADER_INTERVAL_MS = 450;" in script
     assert "window.setInterval(advanceLoaderPiece, LOADER_INTERVAL_MS)" in script
     assert 'if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;' not in script
+
+
+def test_otb_dialog_exposes_info64_search_and_date_filters():
+    index = client.get("/").text
+    script = client.get("/app.js").text
+
+    assert 'id="search-info64"' in index
+    assert 'id="info64-from" type="text"' in index
+    assert 'id="info64-to" type="text"' in index
+    assert 'placeholder="dd/mm/aaaa"' in index
+    assert 'data-info64-period="12m"' in index
+    assert 'id="info64-federation-filter"' in index
+    assert 'id="info64-opponent-filter"' in index
+    assert 'id="info64-clear-filters"' in index
+    assert "/info64-results" in script
+    assert "safeInfo64Url" in script
+    assert "filterInfo64Results" in script
+    assert "parseSpanishDate" in script
+    assert "normalizeInfo64Opponent" in script
+
+
+def test_header_is_clean_and_otb_search_is_next_to_the_main_search():
+    index = client.get("/").text
+    script = client.get("/app.js").text
+
+    assert 'class="main-nav"' not in index
+    assert 'id="menu-button"' not in index
+    assert 'class="search-alternative"' in index
+    assert 'id="open-import"' in index
+    assert 'id="open-import-bottom"' in index
+    assert "#menu-button" not in script
+
+
+def test_game_result_badges_keep_their_layout_and_use_stable_color_markers():
+    script = client.get("/app.js").text
+    styles = client.get("/styles.css").text
+
+    assert 'class="game-player-meta"' in script
+    assert 'class="game-color-icon ${game.player_color}"' in script
+    assert ".game-players > .game-result" in styles
+    assert ".game-player-meta" in styles
 
 
 def test_pgn_import_excludes_non_standard_variants():
@@ -121,6 +162,61 @@ def fide_player(fide_id="1000001", name="Alice Smith"):
         blitz_rating=2300,
         profile_url=f"https://ratings.fide.com/profile/{fide_id}",
     )
+
+
+def test_info64_endpoint_returns_statistics_and_validates_dates(monkeypatch):
+    import api.app.main as main_module
+
+    monkeypatch.setattr(main_module, "get_fide_player", lambda _: fide_player())
+    result = Info64Result(
+        id="result-1",
+        fide_id="1000001",
+        player_name="Alice Smith",
+        opponent_name="Bob",
+        opponent_fide_id="2000002",
+        opponent_rating=2200,
+        color="white",
+        outcome="win",
+        score=1,
+        result="1",
+        round="3",
+        date="2026-04-02",
+        date_precision="round",
+        tournament="Open 2026",
+        tournament_url="https://info64.org/open-2026",
+        player_url="https://info64.org/open-2026/alice",
+    )
+    monkeypatch.setattr(
+        main_module,
+        "fetch_info64_results",
+        lambda *_, **__: {
+            "results": [result],
+            "warnings": [],
+            "source_url": "https://info64.org/search-player?name=Alice",
+            "tournaments_scanned": 1,
+            "tournaments_matched": 1,
+        },
+    )
+
+    response = client.get(
+        "/api/v1/fide/players/1000001/info64-results?from=2026-01-01&to=2026-12-31"
+    )
+    assert response.status_code == 200
+    assert response.json()["summary"] == {
+        "games": 1,
+        "wins": 1,
+        "draws": 0,
+        "losses": 0,
+        "score_percentage": 100.0,
+        "opponents": 1,
+        "tournaments": 1,
+        "walkovers": 0,
+        "date_range": {"from": "2026-04-02", "to": "2026-04-02"},
+    }
+    invalid = client.get(
+        "/api/v1/fide/players/1000001/info64-results?from=2027-01-01&to=2026-01-01"
+    )
+    assert invalid.status_code == 422
 
 
 def test_import_pgn_deduplicates(monkeypatch):
@@ -276,3 +372,13 @@ def test_combined_profiles_merge_sources(monkeypatch):
     assert dataset["player"]["source"] == "combined"
     assert dataset["sources"] == ["chess.com", "lichess"]
     assert len(dataset["games"]) == 2
+    assert [game["date"] for game in dataset["games"]] == ["2026-07-02", "2026-07-01"]
+
+    games = client.get(
+        f"/api/v1/players/combined/{dataset['player']['external_id']}/games?page_size=250"
+    )
+    assert games.status_code == 200
+    assert [game["date"] for game in games.json()["items"]] == [
+        "2026-07-02",
+        "2026-07-01",
+    ]
