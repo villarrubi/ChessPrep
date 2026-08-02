@@ -176,6 +176,8 @@ class RawGame(BaseModel):
 
 **Alcance implementado del MVP:** Lichess y Chess.com como proveedores online. La búsqueda OTB exige un ID FIDE válido, muestra las tres curvas Elo de los últimos tres años y solo acepta participaciones de Info64 que enlacen al mismo ID. La importación PGN no exige FIDE, crea un dossier independiente e infiere como perspectiva estadística el nombre más frecuente de las cabeceras.
 
+**Ejemplo integrado:** la pantalla inicial no precarga ningún dossier. Mediante una acción explícita se puede abrir un conjunto sintético de 12 partidas atribuido a «Jugador de muestra»; tanto la interfaz como la API lo identifican como ficticio (`source="demo"`, `source_confidence="synthetic"`) y nunca lo presentan como información de un jugador real.
+
 **Regla de modalidad:** solo se normaliza ajedrez estándar. Lichess se limita a ritmos estándar, Chess.com exige `rules="chess"` y el parser PGN descarta variantes o posiciones iniciales no estándar. Bullet se conserva como ritmo, no como variante.
 
 **Orden de prioridad futura para ampliar OTB:** fuentes con API o licencia clara → bases públicas descargables → fallbacks web revisados jurídicamente.

@@ -13,6 +13,21 @@ def test_health_and_demo_are_available():
     demo = client.get("/api/v1/demo")
     assert demo.status_code == 200
     assert demo.json()["games"] == 12
+    assert demo.json()["player"]["display_name"] == "Jugador de muestra"
+
+
+def test_demo_is_synthetic_and_only_loads_after_an_explicit_action():
+    index = client.get("/").text
+    script = client.get("/app.js").text
+    games = client.get("/api/v1/players/demo/jugador-muestra/games?mode=combined&page_size=20").json()["items"]
+
+    assert 'id="analisis" aria-live="polite" hidden' in index
+    assert 'id="partidas" hidden' in index
+    assert "Ver ejemplo ficticio" in index
+    assert "loadDemo(false)" not in script
+    assert "Ejemplo ficticio cargado" in script
+    assert all(game["source"] == "demo" for game in games)
+    assert all(game["source_confidence"] == "synthetic" for game in games)
 
 
 def test_security_headers_are_applied_to_api_and_web():
@@ -33,7 +48,7 @@ def test_loader_cycles_all_pieces_without_disabling_its_timer():
     index = client.get("/").text
     script = client.get("/app.js").text
 
-    assert "/app.js?v=20260803-three-fide-ratings" in index
+    assert "/app.js?v=20260803-honest-demo" in index
     assert 'const LOADER_PIECES = ["♙", "♘", "♗", "♖", "♕", "♔"];' in script
     assert "const LOADER_INTERVAL_MS = 450;" in script
     assert "window.setInterval(advanceLoaderPiece, LOADER_INTERVAL_MS)" in script
@@ -168,7 +183,7 @@ def test_untrusted_host_and_oversized_request_are_rejected():
 
 
 def test_demo_stats_are_traced_and_consistent():
-    response = client.get("/api/v1/players/demo/judit-polgar/stats?mode=combined")
+    response = client.get("/api/v1/players/demo/jugador-muestra/stats?mode=combined")
     assert response.status_code == 200
     payload = response.json()
     assert payload["sample_size"] == 12
@@ -176,11 +191,11 @@ def test_demo_stats_are_traced_and_consistent():
     assert payload["overall"]["draws"] == 3
     assert payload["overall"]["losses"] == 3
     assert payload["mode_breakdown"] == {"online": 6, "otb": 6}
-    assert payload["sources"] == ["lichess", "pgn_import"]
+    assert payload["sources"] == ["demo"]
 
 
 def test_filters_and_game_traceability():
-    response = client.get("/api/v1/players/demo/judit-polgar/games?mode=otb&color=black")
+    response = client.get("/api/v1/players/demo/jugador-muestra/games?mode=otb&color=black")
     payload = response.json()
     assert response.status_code == 200
     assert payload["total"] == 3

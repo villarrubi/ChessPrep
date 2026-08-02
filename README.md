@@ -16,7 +16,7 @@ Aplicación web de preparación ajedrecística para torneos. Convierte partidas 
 - Análisis Stockfish en el cliente (Web Worker): calidad de jugadas, barra y curva de evaluación, mejor jugada, precisión, momentos clave y modo explorar.
 - Búsqueda OTB por ID FIDE: ficha oficial, evolución mensual de los Elo lento, rápido y blitz durante los últimos tres años, participaciones de Info64 contrastadas por el mismo ID, rivales, resultados, rondas, fechas y balance con filtro temporal.
 - Importación PGN independiente de la búsqueda de jugadores: acepta `.pgn` y `.txt`, deduplica las partidas, infiere como perspectiva del dossier el nombre más repetido y crea un dataset temporal con TTL sin exigir ID FIDE ni coincidencias con una ficha oficial.
-- Datos de muestra integrados para que el producto funcione sin red.
+- Ejemplo ficticio integrado para probar la interfaz y los cálculos sin red; solo se carga mediante una acción expresa y se identifica como sintético en la API y en pantalla.
 - API OpenAPI documentada en `/api/docs`.
 - Sin cuentas, base de datos, Redis, colas ni IA generativa.
 
@@ -42,6 +42,8 @@ El visor puede activar **Analizar** (tecla `A`) para evaluar la partida en el na
 El documento técnico proponía Next.js como una tecnología orientativa. Para este MVP se ha usado una SPA sin proceso de build: mantiene la separación `web/api`, reduce dependencias y permite ejecutar el producto con Python solamente. FastAPI también sirve los archivos web en desarrollo; en Docker, Nginx expone el frontend y redirige `/api` al servicio correspondiente.
 
 ### Muestras, ritmos y variantes
+
+El dossier permanece oculto hasta que se busca un jugador, se importa un PGN o se pulsa **Ver ejemplo ficticio**. Ese ejemplo contiene 12 PGN sintéticos atribuidos únicamente a «Jugador de muestra»: sus estadísticas son cálculos reales y deterministas sobre esas partidas, pero no describen a una persona, cuenta o torneo reales.
 
 La interfaz solicita como máximo las 100 partidas estándar más recientes de cada proveedor. El ritmo **Global** no aplica un filtro temporal; **Bullet**, **Blitz**, **Rápida** y **Lenta** muestran únicamente su categoría.
 
@@ -104,11 +106,12 @@ docker compose up --build
 .venv\Scripts\python -m pytest -q
 ```
 
-Las pruebas comprueban el dataset de muestra, los totales estadísticos, los filtros por ritmo y apertura, la exclusión de variantes, la trazabilidad de una partida, las posiciones del visor, las integraciones de proveedor, el historial de los tres Elo FIDE y la importación PGN independiente con deduplicación e inferencia de jugador.
+Las pruebas comprueban que el ejemplo sintético no se precarga ni se confunde con una fuente real, además de sus totales estadísticos, los filtros por ritmo y apertura, la exclusión de variantes, la trazabilidad de una partida, las posiciones del visor, las integraciones de proveedor, el historial de los tres Elo FIDE y la importación PGN independiente con deduplicación e inferencia de jugador.
 
 ## API principal
 
 ```text
+GET  /api/v1/demo
 GET  /api/v1/players/search?q={usuario}
 POST /api/v1/players/combined
 GET  /api/v1/players/{source}/{external_id}
@@ -125,7 +128,7 @@ GET  /api/v1/datasets/{dataset_id}/games
 GET  /api/v1/datasets/{dataset_id}/stats
 ```
 
-Cada resultado estadístico declara su muestra, fuentes, ritmo y rango temporal. `GET /fide/players/{fide_id}` incluye `rating_history`, con puntos mensuales validados para `rating`, `rapid_rating` y `blitz_rating`. `POST /datasets` crea siempre un dossier PGN independiente: no acepta fusionarlo con otro dataset. Los datasets importados se guardan únicamente en memoria y caducan por defecto a los 30 minutos.
+Cada resultado estadístico declara su muestra, fuentes, ritmo y rango temporal. `GET /demo` devuelve únicamente el acceso al ejemplo ficticio, cuyos registros usan la fuente `demo` y confianza `synthetic`. `GET /fide/players/{fide_id}` incluye `rating_history`, con puntos mensuales validados para `rating`, `rapid_rating` y `blitz_rating`. `POST /datasets` crea siempre un dossier PGN independiente: no acepta fusionarlo con otro dataset. Los datasets importados se guardan únicamente en memoria y caducan por defecto a los 30 minutos.
 
 ## Configuración
 

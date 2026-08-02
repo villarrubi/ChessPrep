@@ -374,6 +374,8 @@ async function loadPlayer(player, { scroll = false } = {}) {
     state.games = games.items;
     state.datasetId = games.trace?.dataset_id || null;
     state.openingFilter = null;
+    $("#analisis").hidden = false;
+    $("#partidas").hidden = false;
     renderAll();
     if (scroll) $("#analisis").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
@@ -388,6 +390,12 @@ async function loadDemo(scroll = true) {
   try {
     const demo = await api("/demo");
     await loadPlayer(demo.player, { scroll });
+    toast(
+      "Ejemplo ficticio cargado",
+      "Estas partidas se crearon para probar la interfaz y los cálculos; no pertenecen a una persona real.",
+      "warning",
+      { persistent: true },
+    );
   } catch (error) {
     toast("La muestra no está disponible", error.message, "error");
   }
@@ -1728,10 +1736,9 @@ function bindEvents() {
   });
 }
 
-async function init() {
+function init() {
   renderMiniBoard();
   bindEvents();
-  await loadDemo(false);
 }
 
 document.addEventListener("DOMContentLoaded", init);

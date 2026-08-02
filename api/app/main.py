@@ -161,12 +161,9 @@ async def protect_http_boundary(request, call_next):
 DATA_DIR = Path(__file__).resolve().parent / "data"
 DEMO_PLAYER = PlayerRef(
     source="demo",
-    external_id="judit-polgar",
-    username="Judit Polgar",
-    display_name="Judit Polgár",
-    title="GM",
-    rating=2675,
-    country="HU",
+    external_id="jugador-muestra",
+    username="Jugador de muestra",
+    display_name="Jugador de muestra",
     game_type=GameType.ONLINE,
 )
 
@@ -177,19 +174,19 @@ def ensure_demo():
         return existing
     online = parse_pgn(
         (DATA_DIR / "demo_online.pgn").read_text(encoding="utf-8"),
-        source="lichess",
+        source="demo",
         game_type=GameType.ONLINE,
-        target_player="Judit Polgar",
-        confidence="official",
+        target_player="Jugador de muestra",
+        confidence="synthetic",
     )
     otb = parse_pgn(
         (DATA_DIR / "demo_otb.pgn").read_text(encoding="utf-8"),
-        source="pgn_import",
+        source="demo",
         game_type=GameType.OTB,
-        target_player="Judit Polgar",
-        confidence="user_upload",
+        target_player="Jugador de muestra",
+        confidence="synthetic",
     )
-    return store.create(DEMO_PLAYER, [*online.games, *otb.games], dataset_id="demo-judit-polgar")
+    return store.create(DEMO_PLAYER, [*online.games, *otb.games], dataset_id="demo-jugador-muestra")
 
 
 def get_dataset_or_404(source: str, external_id: str):
@@ -311,9 +308,7 @@ def demo():
 def search_players(q: str = Query(min_length=2, max_length=80), source: str = "all"):
     clean = q.strip()
     demo_match = clean.casefold() in {
-        "judit",
-        "judit polgar",
-        "judit polgár",
+        "jugador de muestra",
         "demo",
         "muestra",
     }
