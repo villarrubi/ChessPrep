@@ -1,6 +1,6 @@
 # ChessPrep — Documento Técnico de Diseño (Web)
 
-**Fecha:** 31 de julio de 2026  
+**Fecha:** 3 de agosto de 2026
 **Producto:** aplicación web (navegador). Sin APIs de IA generativa. Sin empaquetado nativo (Capacitor / tiendas) en el alcance actual.
 **Decisión de arquitectura MVP:** sin cuentas y sin persistencia; las partidas se consultan, procesan y mantienen temporalmente en memoria o en archivos temporales con caducidad.
 
@@ -8,12 +8,12 @@
 
 ## 1. Resumen del proyecto
 
-ChessPrep es una **aplicación web de preparación ajedrecística** con dos funciones principales:
+ChessPrep es una **aplicación web de preparación ajedrecística** con dos funciones principales y dos vías de entrada independientes:
 
 1. **Visor de partidas paso a paso** — abrir una partida del rival y recorrerla jugada a jugada sobre un tablero interactivo.
 2. **Estadísticas del jugador** — ver datos agregados y objetivos sobre su juego (rendimiento con blancas/negras, aperturas, piezas relevantes, etc.), siempre trazables a un conjunto concreto de partidas.
 
-El flujo típico: buscar un rival → ingerir/consultar sus partidas públicas → explorar estadísticas o abrir una partida y avanzar/retroceder en el tablero.
+Las vías de entrada son: buscar un jugador online u OTB para consultar fuentes públicas, o importar directamente un archivo PGN sin vincularlo a una identidad FIDE. Ambos caminos terminan en el mismo visor y motor estadístico temporal.
 
 No hay redacción automática de informes ni llamadas a modelos de lenguaje. Toda la información que ve el usuario sale de datos de partidas (PGN) y de cálculos deterministas en el backend.
 
@@ -74,10 +74,10 @@ Reglas de presentación:
 
 | Capa | Elección | Motivo |
 |---|---|---|
-| Frontend web | **Next.js (App Router) + React + TypeScript + Tailwind CSS** | Rutas por jugador/partida, SSR opcional, ecosistema maduro para tableros (`react-chessboard`, `chess.js`) |
+| Frontend web | **SPA estática con HTML, CSS y JavaScript** | Sin proceso de build; FastAPI puede servirla directamente y Nginx hacerlo en Docker |
 | Backend API | **FastAPI (Python)** | Ingesta PGN, agregaciones estadísticas y (opcional) Stockfish; ecosistema `python-chess` |
 | Parsing PGN / lógica ajedrez | **python-chess** (servidor) + **chess.js** (cliente, visor) | Servidor normaliza y calcula stats; cliente anima el tablero jugada a jugada |
-| Motor de evaluación (opcional) | **Stockfish** self-hosted vía UCI | Solo para overlay de evaluación en el visor / métricas de calidad; no es requisito del MVP |
+| Motor de evaluación | **Stockfish WASM/JS en Web Worker** | Análisis progresivo en el navegador, MultiPV y modo explorar sin cargar la API |
 | Persistencia (MVP) | **Ninguna** | Los datos se procesan en memoria; los PGN grandes pueden pasar por archivos temporales con TTL |
 | Persistencia futura | **PostgreSQL** | Solo cuando haya cuentas, favoritos, histórico, grandes datasets OTB o necesidad de evitar reingestas |
 | Cache / colas (MVP) | Caché TTL en memoria o temporal | Evita repetir una operación durante una sesión sin introducir Redis |
@@ -87,7 +87,7 @@ Reglas de presentación:
 | Progreso (MVP) | Respuesta síncrona y estados de operación | SSE/polling solo cuando existan jobs asíncronos |
 | Infra | **Docker Compose** en dev; servicios separados en prod | Frontend y API en el MVP; base de datos y workers son evoluciones posteriores |
 
-**Fuera de alcance:** APIs de IA generativa (Claude, OpenAI, etc.), apps nativas / Capacitor / tiendas. PWA opcional más adelante sobre el mismo Next.js.
+**Fuera de alcance:** APIs de IA generativa (Claude, OpenAI, etc.), apps nativas / Capacitor / tiendas. PWA opcional más adelante sobre la misma SPA.
 
 ---
 
@@ -96,11 +96,12 @@ Reglas de presentación:
 ```
 ┌──────────────────────────────────────────┐
 │  NAVEGADOR                               │
-│  Next.js                                 │
-│  · Buscador / ficha de jugador           │
+│  SPA HTML/CSS/JavaScript                 │
+│  · Búsqueda Online o FIDE/Info64         │
+│  · Importación PGN independiente         │
 │  · ESTADÍSTICAS (color, aperturas, …)    │
 │  · VISOR (partida paso a paso)           │
-│  · Selector modo online/OTB/combinado    │
+│  · Stockfish en Web Worker               │
 └──────────────────┬───────────────────────┘
                    │ HTTPS (REST; SSE solo futuro)
 ┌──────────────────▼───────────────────────┐
@@ -117,13 +118,14 @@ Reglas de presentación:
 ┌──▼─────────────────▼───────────▼───────────┐
 │           CAPA DE PROVEEDORES              │
 │  Online: Lichess · Chess.com               │
-│  OTB: PGN manual · fuentes futuras         │
+│  OTB: FIDE · Info64                         │
+│  Archivo: PGN subido por el usuario         │
 └────────────────────────────────────────────┘
 ```
 
 **Contrato de fronteras:**
 
-- El navegador reproduce partidas y pinta gráficos; no parsea dumps masivos ni ejecuta Stockfish en el flujo principal.
+- El navegador reproduce partidas, pinta gráficos y ejecuta Stockfish bajo demanda en un Worker; no parsea dumps masivos.
 - Stats y listados de partidas salen de la API; el visor pide el PGN (o la lista de FENs/jugadas) usando una referencia externa o un identificador temporal.
 - La API no necesita un `Game` persistente: puede devolver `source` + `source_game_id` o un `dataset_id` temporal con caducidad.
 - Una instancia del MVP puede mantener una caché temporal local; si se escala a varias instancias habrá que introducir un almacenamiento compartido.
@@ -170,13 +172,13 @@ class RawGame(BaseModel):
 
 **Online:** Lichess API · Chess.com API  
 
-**OTB:** Lumbra's Gigabase (bulk principal) · TWIC (actualidad) · YottaChess / 365chess / chessgames (fallback por nombre; scraping — revisar ToS) · Caissabase · chess-results (identidad, sin PGN) · FIDE (metadatos) · importación manual PGN desde el navegador  
+**OTB:** FIDE para identidad, ratings actuales e historial mensual · Info64 para participaciones y resultados · importación manual PGN desde el navegador como flujo separado
 
-**Alcance implementado del MVP:** Lichess y Chess.com como proveedores online; para OTB se exige un ID FIDE válido y un PGN cuyas cabeceras permitan verificar al jugador. No se hace ingesta masiva OTB en esta fase.
+**Alcance implementado del MVP:** Lichess y Chess.com como proveedores online. La búsqueda OTB exige un ID FIDE válido, muestra las tres curvas Elo de los últimos tres años y solo acepta participaciones de Info64 que enlacen al mismo ID. La importación PGN no exige FIDE, crea un dossier independiente e infiere como perspectiva estadística el nombre más frecuente de las cabeceras.
 
 **Regla de modalidad:** solo se normaliza ajedrez estándar. Lichess se limita a ritmos estándar, Chess.com exige `rules="chess"` y el parser PGN descarta variantes o posiciones iniciales no estándar. Bullet se conserva como ritmo, no como variante.
 
-**Orden de prioridad futura para ampliar OTB:** Gigabase → TWIC → fallbacks web → PGN manual.
+**Orden de prioridad futura para ampliar OTB:** fuentes con API o licencia clara → bases públicas descargables → fallbacks web revisados jurídicamente.
 
 Los proveedores OTB sin API pública se tratan como fallback de baja frecuencia, no como sync masivo.
 
@@ -187,6 +189,7 @@ Los proveedores OTB sin API pública se tratan como fallback de baja frecuencia,
 El MVP no crea tablas ni requiere un ORM. Se utilizan modelos Pydantic o `dataclasses` para validar y transportar datos durante una operación.
 
 - **PlayerRef** — identificador externo, nombre y fuente del jugador.
+- **FideRatingPoint** — mes y Elo lento, rápido y blitz validados para la mini gráfica de la ficha oficial.
 - **RawGame** — modelo común recibido de un proveedor o de un PGN subido.
 - **NormalizedGame** — partida normalizada, con PGN validado, metadatos, jugadas y referencia externa si existe.
 - **TemporaryDataset** — conjunto de partidas asociado a un `dataset_id` temporal, con fecha de caducidad y fuente.
@@ -243,12 +246,13 @@ El visor ejecuta Stockfish en un Web Worker del navegador, sin bloquear la API n
 
 | Función / capacidad | Componente |
 |---|---|
-| Buscar rival | Página Next.js + `GET /players/search` + proveedores (metadatos) |
+| Buscar rival online | SPA + `GET /players/search` + proveedores Lichess/Chess.com |
+| Buscar rival OTB | SPA + ficha FIDE + historial de ratings + resultados Info64 |
 | Ingesta de partidas | Capa de proveedores + pipeline temporal |
 | **Estadísticas** | Motor de Estadísticas + páginas `/players/[source]/[external_id]` (tabs/secciones) |
-| **Visor paso a paso** | `GET /games/{source}/{external_id}` + React + `chess.js` + `react-chessboard` |
+| **Visor paso a paso** | `GET /games/{source}/{game_id}` + `chess.js` + tablero HTML/CSS |
 | De stats → partidas | Query `games?opening=…&color=…&dataset_id=…` → click → visor |
-| Importación PGN | Upload web → mismo pipeline de normalización |
+| Importación PGN | Sección independiente → dataset temporal nuevo → mismo pipeline de normalización |
 | Auth / preferencias (futuro) | `User` + cookies de sesión |
 
 Módulos secundarios (comparador, calculadoras Elo, dashboard) solo si no distraen de los dos pilares; no son MVP.
@@ -275,9 +279,13 @@ GET  /api/v1/players/{source}/{external_id}/stats/openings?color=white|black
 GET  /api/v1/players/{source}/{external_id}/stats/pieces  # piezas relevantes / actividad
 
 # PGN temporal
-POST /api/v1/datasets                              # crea un dataset con TTL
+POST /api/v1/datasets                              # crea un dossier PGN independiente con TTL
 GET  /api/v1/datasets/{dataset_id}/games
 GET  /api/v1/datasets/{dataset_id}/stats
+
+# FIDE e Info64
+GET  /api/v1/fide/players/{fide_id}                # identidad, ratings e historial mensual
+GET  /api/v1/fide/players/{fide_id}/info64-results?from=&to=
 
 # Futuro, cuando existan trabajos asíncronos o cuentas
 GET  /api/v1/jobs/{id}/events                      # SSE
@@ -295,7 +303,7 @@ CORS: orígenes explícitos; ideal mismo sitio vía reverse proxy (`/api` detrá
 
 ```
 Internet → CDN / reverse proxy (TLS)
-              ├─ Next.js (UI: stats + visor)
+              ├─ Nginx o FastAPI (SPA: búsqueda + stats + visor)
               └─ FastAPI (/api/v1)
                      ├─ Proveedores externos
                      └─ Caché/archivos temporales con TTL
@@ -303,7 +311,7 @@ Internet → CDN / reverse proxy (TLS)
 
 | Pieza | Opciones v1 |
 |---|---|
-| Frontend | Vercel, Cloudflare Pages, o contenedor + Nginx/Caddy |
+| Frontend | Archivos estáticos en CDN, o contenedor + Nginx/Caddy |
 | API | Fly.io, Railway, Render o VPS Docker |
 | Almacenamiento temporal | Memoria del proceso o volumen temporal no persistente |
 | Postgres / Redis / workers | No necesarios en el MVP; servicios gestionados o contenedores en una fase posterior |
@@ -327,16 +335,12 @@ Móvil: responsive; sin app store. PWA opcional más adelante.
 
 ## 13. Próximos pasos
 
-1. Monorepo: `web/` (Next.js) + `api/` (FastAPI) + `docker-compose.yml`, sin servicio de base de datos.
-2. Contratos API, modelos temporales y fixtures PGN compartidos.
-3. Ingesta piloto: **Lichess** (online) + **PGN manual** (OTB o datos de prueba) → `NormalizedGame` válido.
-4. **MVP UI #1 — Visor:** listado de partidas + tablero paso a paso.
-5. **MVP UI #2 — Stats:** por color + aperturas + enlace a partidas filtradas.
-6. Dataset temporal para importaciones PGN, con TTL y limpieza automática.
-7. Selector online/OTB/combinado en ficha y en APIs.
-8. Preview desplegado (URL) para probar en desktop y móvil.
-9. Métricas de piezas sobre PGN parseado; afinar definición con datos reales.
-10. (Futuro) PostgreSQL, Redis/Celery, autenticación, más proveedores OTB y Stockfish.
+1. Desplegar una preview HTTPS y validar el flujo completo en escritorio y móvil.
+2. Añadir observabilidad de errores y tiempos de respuesta de Lichess, Chess.com, FIDE e Info64.
+3. Evaluar caché temporal del perfil e historial FIDE para reducir consultas repetidas sin introducir persistencia permanente.
+4. Ampliar las fuentes OTB únicamente cuando exista una API, descarga o permiso de uso claro.
+5. Refinar métricas deterministas y exportaciones reutilizando los datasets ya normalizados.
+6. Considerar PostgreSQL, Redis/trabajos asíncronos y cuentas solo cuando aparezca una necesidad real de persistencia o escala.
 
 ---
 

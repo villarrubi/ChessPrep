@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 import html
+import json
 import re
 import unicodedata
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from api.app.models import FidePlayer, NormalizedGame
+from api.app.models import FidePlayer, FideRatingPoint, NormalizedGame
 from api.app.services.text import clean_untrusted_text
 
 
 BASE_URL = "https://ratings.fide.com"
 USER_AGENT = "ChessPrep/1.0 (FIDE identity verification; github.com/villarrubi/Chess-Tournament-Assistant)"
 MAX_RESPONSE_BYTES = 2_000_000
+MAX_HISTORY_RESPONSE_BYTES = 500_000
 TITLE_CODES = {
     "grandmaster": "GM",
     "international master": "IM",
@@ -63,7 +65,56 @@ def _rating(html_text: str, css_class: str) -> int | None:
     return int(value) if value and value.isdigit() else None
 
 
-def get_player(fide_id: str) -> FidePlayer:
+def _parse_rating_history(payload: object) -> list[FideRatingPoint]:
+    if not isinstance(payload, list):
+        return []
+    history: list[FideRatingPoint] = []
+    seen_dates: set[str] = set()
+    for item in payload[-60:]:
+        if not isinstance(item, dict):
+            continue
+        raw_date = str(item.get("date_2") or "").strip()
+        if not re.fullmatch(r"\d{4}-[A-Z][a-z]{2}", raw_date):
+            continue
+        ratings: dict[str, int | None] = {}
+        for output_key, source_key in (
+            ("rating", "rating"),
+            ("rapid_rating", "rapid_rtng"),
+            ("blitz_rating", "blitz_rtng"),
+        ):
+            raw_rating = str(item.get(source_key) or "").strip()
+            value = int(raw_rating) if raw_rating.isdigit() else 0
+            ratings[output_key] = value if 100 <= value <= 4000 else None
+        if not any(ratings.values()) or raw_date in seen_dates:
+            continue
+        seen_dates.add(raw_date)
+        history.append(FideRatingPoint(date=raw_date, **ratings))
+    return history
+
+
+def _get_rating_history(fide_id: str, timeout: int = 8) -> list[FideRatingPoint]:
+    request = Request(
+        f"{BASE_URL}/a_chart_data.phtml?event={fide_id}&period=3",
+        data=b"",
+        method="POST",
+        headers={
+            "Accept": "application/json",
+            "Referer": f"{BASE_URL}/profile/{fide_id}",
+            "User-Agent": USER_AGENT,
+            "X-Requested-With": "XMLHttpRequest",
+        },
+    )
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            body = response.read(MAX_HISTORY_RESPONSE_BYTES + 1)
+            if len(body) > MAX_HISTORY_RESPONSE_BYTES:
+                return []
+        return _parse_rating_history(json.loads(body.decode("utf-8-sig", errors="strict")))
+    except (HTTPError, URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError):
+        return []
+
+
+def get_player(fide_id: str, *, include_history: bool = True) -> FidePlayer:
     clean_id = fide_id.strip()
     if not re.fullmatch(r"\d{5,10}", clean_id):
         raise LookupError("El ID FIDE debe contener entre 5 y 10 cifras.")
@@ -84,6 +135,7 @@ def get_player(fide_id: str) -> FidePlayer:
         standard_rating=_rating(page, "profile-standart"),
         rapid_rating=_rating(page, "profile-rapid"),
         blitz_rating=_rating(page, "profile-blitz"),
+        rating_history=_get_rating_history(clean_id) if include_history else [],
         profile_url=f"{BASE_URL}/profile/{clean_id}",
     )
 

@@ -1,0 +1,8 @@
+[Event "Partida de ejemplo"]
+[Site "Internet"]
+[Date "2026.08.03"]
+[White "Jugador 1"]
+[Black "Jugador 2"]
+[Result "1-0"]
+
+1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0

@@ -34,7 +34,6 @@ from api.app.providers.lichess import (
 from api.app.providers.fide import (
     ProviderUnavailable as FideUnavailable,
     get_player as get_fide_player,
-    verified_color,
 )
 from api.app.providers.info64 import (
     ProviderUnavailable as Info64Unavailable,
@@ -510,7 +509,7 @@ def fide_player_info64_results(
             detail="La fecha inicial no puede ser posterior a la fecha final.",
         )
     try:
-        player = get_fide_player(fide_id)
+        player = get_fide_player(fide_id, include_history=False)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except FideUnavailable as exc:
@@ -563,107 +562,71 @@ def fide_player_info64_results(
 
 @app.post("/api/v1/datasets", status_code=201)
 def create_dataset(payload: DatasetCreate):
-    base_dataset = None
     if payload.merge_with_dataset_id:
-        base_dataset = store.get(payload.merge_with_dataset_id)
-        if not base_dataset:
-            raise HTTPException(status_code=404, detail="El dossier que querías ampliar ha caducado.")
+        raise HTTPException(
+            status_code=422,
+            detail="La importación PGN es independiente y no se fusiona con otro dossier.",
+        )
 
     if payload.game_type != GameType.OTB:
         raise HTTPException(status_code=422, detail="Este importador solo admite partidas OTB.")
-    if not payload.fide_id:
-        raise HTTPException(
-            status_code=422,
-            detail="Para importar partidas OTB necesitas un ID FIDE válido.",
-        )
-    try:
-        fide_player = get_fide_player(payload.fide_id)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except FideUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    preliminary = parse_pgn(
+        payload.pgn,
+        source="pgn_import",
+        game_type=payload.game_type,
+        confidence="user_upload",
+    )
+    if not preliminary.games:
+        detail = preliminary.errors[0] if preliminary.errors else "No se pudo procesar el PGN."
+        raise HTTPException(status_code=422, detail=detail)
+
+    player_counts: dict[str, int] = {}
+    player_names: dict[str, str] = {}
+    for game in preliminary.games:
+        for name in (game.white, game.black):
+            key = name.casefold().strip()
+            if not key:
+                continue
+            player_counts[key] = player_counts.get(key, 0) + 1
+            player_names.setdefault(key, name)
+    target_key = max(player_counts, key=player_counts.get)
+    target_name = player_names[target_key]
 
     parsed = parse_pgn(
         payload.pgn,
         source="pgn_import",
         game_type=payload.game_type,
-        target_player=fide_player.name,
+        target_player=target_name,
         confidence="user_upload",
     )
     if not parsed.games:
         detail = parsed.errors[0] if parsed.errors else "No se pudo procesar el PGN."
         raise HTTPException(status_code=422, detail=detail)
 
-    verified_games = []
-    rejected_games = 0
-    for game in parsed.games:
-        color = verified_color(game, fide_player)
-        if not color:
-            rejected_games += 1
-            continue
-        verified_games.append(
-            game.model_copy(update={"player_color": color, "target_player": fide_player.name})
-        )
-    if not verified_games:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"El PGN no contiene partidas verificables de {fide_player.name} "
-                f"(ID FIDE {fide_player.fide_id})."
-            ),
-        )
-    warnings = list(parsed.errors)
-    if rejected_games:
-        warnings.append(
-            f"Se omitieron {rejected_games} partidas porque el jugador FIDE no figuraba en sus cabeceras."
-        )
-
-    if base_dataset:
-        merged_games = {}
-        for game in [*base_dataset.games, *verified_games]:
-            merged_games.setdefault(game.dedupe_hash, game)
-        cross_duplicates = len(base_dataset.games) + len(verified_games) - len(merged_games)
-        identity = f"{base_dataset.player.source}|{base_dataset.player.external_id}|otb"
-        merged_player = base_dataset.player.model_copy(
-            update={
-                "source": "combined",
-                "external_id": hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16],
-                "display_name": fide_player.name,
-                "title": base_dataset.player.title or fide_player.title,
-                "rating": base_dataset.player.rating or fide_player.standard_rating,
-                "country": base_dataset.player.country or fide_player.federation,
-                "fide_id": fide_player.fide_id,
-            }
-        )
-        dataset = store.create(merged_player, list(merged_games.values()))
-        return {
-            "dataset": dataset,
-            "fide_player": fide_player,
-            "warnings": warnings,
-            "duplicates": parsed.duplicates + cross_duplicates,
-            "rejected_games": rejected_games,
-            "merged_games": len(verified_games) - cross_duplicates,
-        }
+    identity = "|".join(game.dedupe_hash for game in parsed.games)
+    external_id = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
+    ratings = [
+        game.white_elo if game.player_color == "white" else game.black_elo
+        for game in parsed.games
+    ]
 
     player = PlayerRef(
-        source="fide",
-        external_id=fide_player.fide_id,
-        username=fide_player.name,
-        display_name=fide_player.name,
-        title=fide_player.title,
-        rating=fide_player.standard_rating,
-        country=fide_player.federation,
-        fide_id=fide_player.fide_id,
+        source="pgn_import",
+        external_id=external_id,
+        username=target_name,
+        display_name=target_name,
+        rating=next((rating for rating in ratings if rating), None),
         game_type=payload.game_type,
     )
-    dataset = store.create(player, verified_games)
+    dataset = store.create(player, parsed.games)
     return {
         "dataset": dataset,
-        "fide_player": fide_player,
-        "warnings": warnings,
+        "fide_player": None,
+        "warnings": parsed.errors,
         "duplicates": parsed.duplicates,
-        "rejected_games": rejected_games,
-        "merged_games": len(verified_games),
+        "rejected_games": 0,
+        "merged_games": len(parsed.games),
     }
 
 

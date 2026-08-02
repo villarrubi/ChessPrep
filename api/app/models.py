@@ -92,6 +92,13 @@ class CombinedPlayerCreate(BaseModel):
     chesscom_username: str | None = Field(default=None, min_length=2, max_length=80)
 
 
+class FideRatingPoint(BaseModel):
+    date: str = Field(pattern=r"^\d{4}-[A-Z][a-z]{2}$")
+    rating: int | None = Field(default=None, ge=100, le=4000)
+    rapid_rating: int | None = Field(default=None, ge=100, le=4000)
+    blitz_rating: int | None = Field(default=None, ge=100, le=4000)
+
+
 class FidePlayer(BaseModel):
     fide_id: str
     name: str
@@ -100,6 +107,7 @@ class FidePlayer(BaseModel):
     standard_rating: int | None = None
     rapid_rating: int | None = None
     blitz_rating: int | None = None
+    rating_history: list[FideRatingPoint] = Field(default_factory=list, max_length=60)
     profile_url: str
 
 

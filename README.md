@@ -14,8 +14,8 @@ Aplicación web de preparación ajedrecística para torneos. Convierte partidas 
 - Navegación desde una estadística hasta las partidas que la forman.
 - Visor con posiciones FEN validadas, controles, reproducción y teclado.
 - Análisis Stockfish en el cliente (Web Worker): calidad de jugadas, barra y curva de evaluación, mejor jugada, precisión, momentos clave y modo explorar.
-- Búsqueda OTB por ID FIDE: ficha oficial, participaciones de Info64 contrastadas por el mismo ID, rivales, resultados, rondas, fechas y balance con filtro temporal.
-- Importación PGN OTB opcional, con verificación de identidad, deduplicación y dataset temporal con TTL para reproducir las jugadas.
+- Búsqueda OTB por ID FIDE: ficha oficial, evolución mensual de los Elo lento, rápido y blitz durante los últimos tres años, participaciones de Info64 contrastadas por el mismo ID, rivales, resultados, rondas, fechas y balance con filtro temporal.
+- Importación PGN independiente de la búsqueda de jugadores: acepta `.pgn` y `.txt`, deduplica las partidas, infiere como perspectiva del dossier el nombre más repetido y crea un dataset temporal con TTL sin exigir ID FIDE ni coincidencias con una ficha oficial.
 - Datos de muestra integrados para que el producto funcione sin red.
 - API OpenAPI documentada en `/api/docs`.
 - Sin cuentas, base de datos, Redis, colas ni IA generativa.
@@ -51,11 +51,17 @@ Un ECO ausente se conserva como valor nulo y se representa visualmente con `—`
 
 ### Resultados OTB de Info64
 
-La búsqueda OTB parte siempre de un ID FIDE numérico. ChessPrep obtiene primero el nombre de la [ficha oficial de FIDE](https://ratings.fide.com/), lo busca en el [buscador público de jugadores de Info64](https://info64.org/search-player) y abre cada participación candidata. Una participación solo cuenta si su ficha de torneo enlaza exactamente al mismo ID FIDE; una coincidencia de nombre por sí sola no se acepta.
+La búsqueda OTB parte siempre de un ID FIDE numérico. ChessPrep obtiene primero el nombre, los tres ratings actuales y el historial mensual de los últimos tres años de la [ficha oficial de FIDE](https://ratings.fide.com/). La tarjeta verificada representa en una misma mini gráfica la evolución del Elo lento, rápido y blitz; si el historial no está disponible, la identidad y los ratings actuales siguen mostrándose con normalidad. Después busca al jugador en el [buscador público de jugadores de Info64](https://info64.org/search-player) y abre cada participación candidata. Una participación solo cuenta si su ficha de torneo enlaza exactamente al mismo ID FIDE; una coincidencia de nombre por sí sola no se acepta.
 
 Para cada emparejamiento se muestran rival, rating e ID FIDE cuando constan, color, resultado, torneo, ronda, mesa y fecha. También se conservan los rivales sin ficha FIDE y se puede alternar entre todos, federados y no federados; aquí «federado» significa que Info64 publica un ID FIDE, aunque el jugador no tenga Elo. El buscador de rival acepta fragmentos del nombre o el ID FIDE, ignora mayúsculas y acentos, y actualiza el balance al instante sobre el grupo visible. La fecha procede del calendario de rondas de Info64; si un torneo solo publica su intervalo general, se marca con `≈` y el filtro temporal compara ese intervalo. La interfaz acepta fechas en formato español `dd/mm/aaaa` y ofrece periodos rápidos sin depender del calendario nativo del navegador.
 
-Info64 publica resultados y estadísticas de torneos, pero no garantiza que incluya el PGN. Por eso estos resultados no abren el visor de jugadas. La importación manual permanece como opción secundaria para quien tenga un PGN y quiera reproducir o analizar las posiciones. La disponibilidad y el histórico dependen de los torneos publicados en Info64; no es una base exhaustiva de todas las partidas OTB del jugador.
+Info64 publica resultados y estadísticas de torneos, pero no garantiza que incluya el PGN. Por eso estos resultados no abren el visor de jugadas. La disponibilidad y el histórico dependen de los torneos publicados en Info64; no es una base exhaustiva de todas las partidas OTB del jugador.
+
+### Importación PGN independiente
+
+El importador se encuentra en una sección propia al final de la página y no forma parte del buscador FIDE/Info64. Un archivo `.pgn` o `.txt` de hasta 5 MB puede procesarse directamente, quitarse antes de enviar y convertirse en un dossier temporal nuevo. No se solicita ID FIDE, no se compara el nombre con una ficha oficial y no se fusiona con el dossier que estuviera abierto.
+
+Para orientar las estadísticas por color, ChessPrep toma automáticamente como jugador principal el nombre que más veces aparece entre las cabeceras `White` y `Black`; en caso de empate conserva el primero. Todas las partidas estándar válidas permanecen en el dataset, las duplicadas y variantes se omiten y los avisos del parser se muestran al usuario. El archivo [PGN.txt](./PGN.txt) incluido en la raíz sirve como ejemplo mínimo de importación.
 
 ## Arranque local en Windows
 
@@ -66,6 +72,14 @@ Requiere Python 3.12 o posterior.
 ```
 
 Después abre [http://localhost:8000](http://localhost:8000). La documentación interactiva está en [http://localhost:8000/api/docs](http://localhost:8000/api/docs).
+
+Si Windows bloquea la ejecución de scripts, permite únicamente esta ejecución sin cambiar la política global:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\run.ps1
+```
+
+Una vez instaladas las dependencias puedes acelerar los siguientes arranques con `.\run.ps1 -SkipInstall`.
 
 Arranque manual:
 
@@ -90,7 +104,7 @@ docker compose up --build
 .venv\Scripts\python -m pytest -q
 ```
 
-Las pruebas comprueban el dataset de muestra, los totales estadísticos, los filtros por ritmo y apertura, la exclusión de variantes, la trazabilidad de una partida, las posiciones del visor, las integraciones de proveedor y la deduplicación de PGN.
+Las pruebas comprueban el dataset de muestra, los totales estadísticos, los filtros por ritmo y apertura, la exclusión de variantes, la trazabilidad de una partida, las posiciones del visor, las integraciones de proveedor, el historial de los tres Elo FIDE y la importación PGN independiente con deduplicación e inferencia de jugador.
 
 ## API principal
 
@@ -111,7 +125,7 @@ GET  /api/v1/datasets/{dataset_id}/games
 GET  /api/v1/datasets/{dataset_id}/stats
 ```
 
-Cada resultado estadístico declara su muestra, fuentes, ritmo y rango temporal. Los datasets importados se guardan únicamente en memoria y caducan por defecto a los 30 minutos.
+Cada resultado estadístico declara su muestra, fuentes, ritmo y rango temporal. `GET /fide/players/{fide_id}` incluye `rating_history`, con puntos mensuales validados para `rating`, `rapid_rating` y `blitz_rating`. `POST /datasets` crea siempre un dossier PGN independiente: no acepta fusionarlo con otro dataset. Los datasets importados se guardan únicamente en memoria y caducan por defecto a los 30 minutos.
 
 ## Configuración
 
@@ -131,4 +145,4 @@ La aplicación trata nombres, eventos y cabeceras PGN como texto, aplica codific
 
 Antes de publicar, configura `CHESSPREP_ALLOWED_HOSTS` con el dominio exacto y `CHESSPREP_CORS_ORIGINS` con el origen HTTPS real. Si no necesitas la documentación interactiva, usa `CHESSPREP_ENABLE_DOCS=false`. Termina TLS en el proxy o plataforma de despliegue y configura HSTS allí; no se incluye HSTS en el contenedor porque el entorno local funciona por HTTP.
 
-La disponibilidad de Lichess, Chess.com, FIDE e Info64 depende de sus respectivos servicios. Si una plataforma online no responde, el dossier combinado utiliza las demás que estén disponibles. Para consultar resultados OTB se exige un ID FIDE válido y cada participación de Info64 se vuelve a comprobar contra él. El ID y los resultados no proporcionan por sí solos las jugadas; el PGN solo es necesario para reproducir y analizar posiciones.
+La disponibilidad de Lichess, Chess.com, FIDE e Info64 depende de sus respectivos servicios. Si una plataforma online no responde, el dossier combinado utiliza las demás que estén disponibles. Para consultar resultados OTB se exige un ID FIDE válido y cada participación de Info64 se vuelve a comprobar contra él. El ID y los resultados no proporcionan por sí solos las jugadas. La importación PGN es un flujo separado para reproducir y analizar posiciones, y no atribuye identidad FIDE al dossier creado.

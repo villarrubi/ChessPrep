@@ -10,7 +10,7 @@
     <meta name="theme-color" content="#10231f" />
     <title>ChessPrep — Conoce el tablero antes de sentarte</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%2310231f%22/><text x=%2232%22 y=%2246%22 text-anchor=%22middle%22 font-size=%2242%22 fill=%22%23f4f1e9%22>♞</text></svg>" />
-    <link rel="stylesheet" href="/styles.css?v=20260802-search-parity" />
+    <link rel="stylesheet" href="/styles.css?v=20260803-three-fide-ratings" />
   </head>
   <body>
     <div class="page-shell">
@@ -35,17 +35,17 @@
               <button id="search-mode-otb" type="button" role="tab" aria-selected="false" aria-controls="search-panel-otb" data-search-mode="otb"><span class="search-mode-symbol otb" aria-hidden="true">♙</span><span><strong>Presencial (OTB)</strong><small>FIDE + Info64</small></span></button>
             </div>
             <div class="search-mode-panel" id="search-panel-online" role="tabpanel" aria-labelledby="search-mode-online">
-              <div class="provider-switch" role="group" aria-label="Plataformas online donde buscar">
-                <button type="button" data-source="all" class="active"><span class="dual-dots"><i></i><i></i></span> Ambas</button>
-                <button type="button" data-source="lichess"><i class="source-dot lichess"></i> Lichess</button>
-                <button type="button" data-source="chess.com"><i class="source-dot chesscom"></i> Chess.com</button>
-              </div>
               <form class="search-form" id="player-search" role="search">
                 <label class="sr-only" for="player-query">Usuario exacto de la plataforma</label>
                 <span class="search-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg></span>
                 <input id="player-query" name="q" type="search" autocomplete="off" placeholder="Usuario común en ambas plataformas…" minlength="2" maxlength="80" />
                 <button class="button button-primary" type="submit">Analizar jugador <span>→</span></button>
               </form>
+              <div class="provider-switch" role="group" aria-label="Plataformas online donde buscar">
+                <button type="button" data-source="all" class="active"><span class="dual-dots"><i></i><i></i></span> Ambas</button>
+                <button type="button" data-source="lichess"><i class="source-dot lichess"></i> Lichess</button>
+                <button type="button" data-source="chess.com"><i class="source-dot chesscom"></i> Chess.com</button>
+              </div>
               <p class="search-mode-note">¿Usa alias distintos? <button class="text-button" id="open-combine" type="button">Combinar perfiles</button></p>
             </div>
             <div class="search-mode-panel" id="search-panel-otb" role="tabpanel" aria-labelledby="search-mode-otb" hidden>
@@ -219,9 +219,26 @@
           </div>
         </section>
 
-        <section class="closing-cta">
-          <div><p class="section-kicker light">Tus propias jugadas</p><h2>¿Tienes un PGN?<br /><em>Nosotros ponemos el orden.</em></h2></div>
-          <div><p>Si además de los resultados tienes las jugadas, importa el PGN para reproducir y analizar las posiciones. Se procesa temporalmente y se contrasta con el ID FIDE.</p><button class="button button-light" id="open-import-bottom" type="button">Importar PGN OTB <span>→</span></button></div>
+        <section class="pgn-import-section" id="importar-pgn" aria-labelledby="pgn-import-title">
+          <div class="pgn-import-copy">
+            <p class="section-kicker light">Importación independiente</p>
+            <h2 id="pgn-import-title">¿Tienes un PGN?<br /><em>Crea su propio dossier.</em></h2>
+            <p>Importa las jugadas sin buscar antes un jugador ni indicar un ID FIDE. El archivo se procesa temporalmente y se abre como un análisis independiente. Para orientar las estadísticas, se toma automáticamente el jugador que más se repite.</p>
+          </div>
+          <div class="pgn-import-card">
+            <label class="drop-zone" id="drop-zone" for="pgn-file">
+              <input id="pgn-file" type="file" accept=".pgn,.txt,application/x-chess-pgn,text/plain" />
+              <span class="upload-icon">↥</span>
+              <strong>Arrastra un PGN o selecciónalo</strong>
+              <small>Archivos .pgn o .txt de hasta 5 MB</small>
+            </label>
+            <div class="selected-file" id="selected-file" hidden>
+              <span id="selected-file-label"></span>
+              <button id="remove-pgn-file" type="button" aria-label="Quitar el PGN seleccionado">Quitar</button>
+            </div>
+            <p class="pgn-import-status" id="pgn-import-status" aria-live="polite">Selecciona un archivo para crear un dossier independiente.</p>
+            <div class="pgn-import-action"><button class="button button-primary" id="submit-import" type="button" disabled>Procesar PGN <span>→</span></button></div>
+          </div>
         </section>
       </main>
 
@@ -250,6 +267,25 @@
             <strong id="fide-profile-name"></strong>
             <span id="fide-profile-meta"></span>
           </div>
+          <div class="fide-rating-trend" id="fide-rating-trend" hidden>
+            <div class="fide-rating-trend-heading">
+              <span>Evolución de Elo</span>
+              <div class="fide-rating-trend-legend" aria-label="Variación por ritmo">
+                <span><i class="standard"></i>L <strong id="fide-rating-delta-standard"></strong></span>
+                <span><i class="rapid"></i>R <strong id="fide-rating-delta-rapid"></strong></span>
+                <span><i class="blitz"></i>B <strong id="fide-rating-delta-blitz"></strong></span>
+              </div>
+            </div>
+            <svg class="fide-rating-trend-svg" id="fide-rating-trend-svg" viewBox="0 0 220 52" role="img" aria-label="Evolución del Elo lento, rápido y blitz en los últimos tres años">
+              <polyline class="fide-rating-line standard" id="fide-rating-line-standard"></polyline>
+              <polyline class="fide-rating-line rapid" id="fide-rating-line-rapid"></polyline>
+              <polyline class="fide-rating-line blitz" id="fide-rating-line-blitz"></polyline>
+              <circle class="fide-rating-end standard" id="fide-rating-end-standard" r="2.5"></circle>
+              <circle class="fide-rating-end rapid" id="fide-rating-end-rapid" r="2.5"></circle>
+              <circle class="fide-rating-end blitz" id="fide-rating-end-blitz" r="2.5"></circle>
+            </svg>
+            <div class="fide-rating-trend-range"><span id="fide-rating-trend-from"></span><span id="fide-rating-trend-to"></span></div>
+          </div>
           <div class="fide-ratings" id="fide-profile-ratings"></div>
         </div>
         <section class="info64-panel" id="info64-panel" hidden aria-labelledby="info64-title">
@@ -277,18 +313,6 @@
             <div class="info64-empty" id="info64-empty" hidden><span>♙</span><strong>No hay resultados verificados con estos filtros</strong><p>Info64 puede no contener ese torneo o no asociar la participación a un ID FIDE.</p></div>
           </div>
         </section>
-        <details class="manual-import" id="manual-import">
-          <summary>También tengo un PGN con las jugadas</summary>
-          <p>Opcional: impórtalo para reproducir y analizar las partidas. Solo se admitirán las que correspondan al jugador FIDE verificado.</p>
-          <label class="drop-zone" id="drop-zone" for="pgn-file">
-            <input id="pgn-file" type="file" accept=".pgn,application/x-chess-pgn,text/plain" />
-            <span class="upload-icon">↥</span>
-            <strong>Arrastra un PGN o selecciónalo</strong>
-            <small>Debe incluir al jugador verificado como blancas o negras</small>
-          </label>
-          <div class="selected-file" id="selected-file" hidden></div>
-          <div class="manual-import-action"><button class="button button-secondary" id="submit-import" type="button" disabled>Procesar PGN <span>→</span></button></div>
-        </details>
         <div class="dialog-actions">
           <button class="button button-ghost" type="button" data-close-dialog="import-dialog">Cerrar</button>
         </div>
@@ -405,6 +429,6 @@
     <script src="/js/stockfishEngine.js" defer></script>
     <script src="/js/gameAnalysis.js" defer></script>
     <script src="/js/exploreMode.js" defer></script>
-    <script src="/app.js?v=20260802-search-parity" defer></script>
+    <script src="/app.js?v=20260803-three-fide-ratings" defer></script>
   </body>
 </html>

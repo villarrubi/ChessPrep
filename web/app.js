@@ -84,6 +84,97 @@ function shortDate(date) {
     .format(new Date(`${date}T12:00:00`));
 }
 
+function fideRatingDateLabel(value, { long = false } = {}) {
+  const match = String(value || "").match(/^(\d{4})-([A-Z][a-z]{2})$/);
+  if (!match) return String(value || "");
+  const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].indexOf(match[2]);
+  if (month < 0) return String(value || "");
+  return new Intl.DateTimeFormat("es-ES", {
+    month: long ? "long" : "short",
+    year: long ? "numeric" : "2-digit",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(Number(match[1]), month, 1))).replace(".", "");
+}
+
+function renderFideRatingTrend(history) {
+  const container = $("#fide-rating-trend");
+  const points = (Array.isArray(history) ? history : [])
+    .filter((point) => /^\d{4}-[A-Z][a-z]{2}$/.test(point?.date) &&
+      [point?.rating, point?.rapid_rating, point?.blitz_rating].some(Number.isFinite))
+    .slice(-40);
+  const series = [
+    { key: "rating", name: "Lento", suffix: "standard" },
+    { key: "rapid_rating", name: "Rápido", suffix: "rapid" },
+    { key: "blitz_rating", name: "Blitz", suffix: "blitz" },
+  ].map((item) => ({
+    ...item,
+    values: points.flatMap((point, index) => Number.isFinite(point[item.key])
+      ? [{ index, value: point[item.key] }]
+      : []),
+  }));
+  const activeSeries = series.filter((item) => item.values.length >= 2);
+  if (points.length < 2 || !activeSeries.length) {
+    container.hidden = true;
+    series.forEach((item) => {
+      $("#fide-rating-line-" + item.suffix).removeAttribute("points");
+      $("#fide-rating-end-" + item.suffix).hidden = true;
+    });
+    return;
+  }
+
+  const width = 220;
+  const height = 52;
+  const padX = 4;
+  const padY = 5;
+  const allRatings = activeSeries.flatMap((item) => item.values.map(({ value }) => value));
+  const lowest = Math.min(...allRatings);
+  const highest = Math.max(...allRatings);
+  const spread = Math.max(highest - lowest, 20);
+  const floor = lowest - spread * 0.12;
+  const ceiling = highest + spread * 0.12;
+
+  series.forEach((item) => {
+    const lineElement = $("#fide-rating-line-" + item.suffix);
+    const endElement = $("#fide-rating-end-" + item.suffix);
+    const deltaElement = $("#fide-rating-delta-" + item.suffix);
+    if (item.values.length < 2) {
+      lineElement.hidden = true;
+      endElement.hidden = true;
+      deltaElement.textContent = "—";
+      deltaElement.className = "neutral";
+      return;
+    }
+    const coordinates = item.values.map(({ index, value }) => {
+      const x = padX + index * ((width - padX * 2) / (points.length - 1));
+      const y = padY + (ceiling - value) * ((height - padY * 2) / (ceiling - floor));
+      return [x, y];
+    });
+    const [lastX, lastY] = coordinates.at(-1);
+    lineElement.setAttribute("points", coordinates.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" "));
+    lineElement.hidden = false;
+    endElement.setAttribute("cx", lastX.toFixed(1));
+    endElement.setAttribute("cy", lastY.toFixed(1));
+    endElement.hidden = false;
+    const delta = item.values.at(-1).value - item.values[0].value;
+    deltaElement.textContent = `${delta > 0 ? "+" : ""}${delta}`;
+    deltaElement.className = delta > 0 ? "positive" : delta < 0 ? "negative" : "neutral";
+  });
+
+  $("#fide-rating-trend-from").textContent = fideRatingDateLabel(points[0].date);
+  $("#fide-rating-trend-to").textContent = fideRatingDateLabel(points.at(-1).date);
+  $("#fide-rating-trend-svg").setAttribute(
+    "aria-label",
+    `Evolución desde ${fideRatingDateLabel(points[0].date, { long: true })} hasta ${fideRatingDateLabel(points.at(-1).date, { long: true })}. ` +
+      activeSeries.map((item) => {
+        const first = item.values[0].value;
+        const last = item.values.at(-1).value;
+        const delta = last - first;
+        return `${item.name}: ${first} a ${last}, ${delta > 0 ? "+" : ""}${delta} puntos`;
+      }).join(". "),
+  );
+  container.hidden = false;
+}
+
 function parseSpanishDate(value) {
   const match = String(value || "").trim().match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
   if (!match) return null;
@@ -160,7 +251,7 @@ function shortRange(range) {
 }
 
 function sourceLabel(source) {
-  return ({ lichess: "Lichess", "chess.com": "Chess.com", combined: "Fuentes combinadas", fide: "FIDE OTB", pgn_import: "PGN OTB", demo: "Muestra", upload: "PGN OTB" })[source] || source;
+  return ({ lichess: "Lichess", "chess.com": "Chess.com", combined: "Fuentes combinadas", fide: "FIDE OTB", pgn_import: "PGN importado", demo: "Muestra", upload: "PGN importado" })[source] || source;
 }
 
 function paceLabel(pace) {
@@ -1217,29 +1308,50 @@ function closeDialog(id) {
 
 async function readPgnFile(file) {
   if (!file) return;
-  if (!file.name.toLowerCase().endsWith(".pgn") && file.type !== "text/plain") {
-    toast("Archivo no compatible", "Selecciona un archivo con extensión .pgn.", "error");
+  const lowerName = file.name.toLowerCase();
+  const compatible = lowerName.endsWith(".pgn") || lowerName.endsWith(".txt") ||
+    ["application/x-chess-pgn", "text/plain"].includes(file.type);
+  if (!compatible) {
+    clearPgnFile();
+    toast("Archivo no compatible", "Selecciona un archivo PGN con extensión .pgn o .txt.", "error");
     return;
   }
   if (file.size > MAX_PGN_BYTES) {
-    state.pgnText = "";
-    $("#selected-file").hidden = true;
-    updateImportReady();
+    clearPgnFile();
     toast("Archivo demasiado grande", "El PGN no puede superar los 5 MB.", "error");
     return;
   }
-  state.pgnText = await file.text();
+  const contents = await file.text();
+  if (contents.trim().length < 8) {
+    clearPgnFile();
+    toast("PGN vacío", "El archivo no contiene una partida PGN.", "error");
+    return;
+  }
+  state.pgnText = contents;
   $("#selected-file").hidden = false;
-  $("#selected-file").textContent = `✓ ${file.name} · ${(file.size / 1024).toLocaleString("es-ES", { maximumFractionDigits: 1 })} KB`;
+  $("#selected-file-label").textContent = `✓ ${file.name} · ${(file.size / 1024).toLocaleString("es-ES", { maximumFractionDigits: 1 })} KB`;
+  updateImportReady();
+}
+
+function clearPgnFile() {
+  state.pgnText = "";
+  $("#pgn-file").value = "";
+  $("#selected-file-label").textContent = "";
+  $("#selected-file").hidden = true;
   updateImportReady();
 }
 
 function updateImportReady() {
-  const currentId = $("#fide-id").value.trim();
-  $("#submit-import").disabled = !(
-    state.pgnText.trim().length >= 8 &&
-    state.fideProfile?.fide_id === currentId
-  );
+  const hasPgn = state.pgnText.trim().length >= 8;
+  const button = $("#submit-import");
+  const status = $("#pgn-import-status");
+  button.disabled = !hasPgn;
+  if (hasPgn) {
+    status.textContent = "Listo para procesar como un dossier independiente.";
+  } else {
+    status.textContent = "Selecciona un archivo para crear un dossier independiente.";
+  }
+  button.title = hasPgn ? "Procesar el PGN seleccionado" : status.textContent;
 }
 
 function safeInfo64Url(value, fallback = "https://info64.org/search-player") {
@@ -1268,6 +1380,7 @@ function resetInfo64Results() {
 function resetFideProfile() {
   state.fideProfile = null;
   $("#fide-profile").hidden = true;
+  renderFideRatingTrend([]);
   resetInfo64Results();
   updateImportReady();
 }
@@ -1434,6 +1547,7 @@ async function verifyFidePlayer() {
     $("#fide-profile-ratings").innerHTML = ratings
       .map(([label, rating]) => `<span>${escapeHtml(label)} ${escapeHtml(rating)}</span>`)
       .join("");
+    renderFideRatingTrend(player.rating_history);
     $("#fide-profile").hidden = false;
     $("#info64-panel").hidden = false;
     updateImportReady();
@@ -1448,47 +1562,29 @@ async function verifyFidePlayer() {
 }
 
 async function submitImport() {
-  if (!state.pgnText || !state.fideProfile) return;
-  closeDialog("import-dialog");
-  setLoading(true, "Verificando identidad y ordenando las partidas…");
+  if (!state.pgnText) return;
+  setLoading(true, "Procesando y ordenando las partidas del PGN…");
   try {
     const result = await api("/datasets", {
       method: "POST",
       body: JSON.stringify({
         pgn: state.pgnText,
         game_type: "otb",
-        merge_with_dataset_id: state.datasetId,
-        fide_id: state.fideProfile.fide_id,
       }),
     });
     state.pace = "global";
     $$("[data-pace]").forEach((button) => button.classList.toggle("active", button.dataset.pace === "global"));
     await loadPlayer(result.dataset.player, { scroll: true });
     const duplicateNote = result.duplicates ? ` · ${result.duplicates} duplicadas omitidas` : "";
-    const rejectedNote = result.rejected_games ? ` · ${result.rejected_games} no pertenecían al jugador` : "";
-    toast("PGN FIDE procesado", `${result.merged_games} partidas OTB añadidas · ${result.dataset.games.length} en el dossier${duplicateNote}${rejectedNote}.`);
-    state.pgnText = "";
-    state.fideProfile = null;
-    state.info64Results = null;
-    $("#pgn-file").value = "";
-    $("#fide-id").value = "";
-    $("#selected-file").hidden = true;
-    $("#fide-profile").hidden = true;
-    $("#info64-panel").hidden = true;
-    $("#info64-results").hidden = true;
-    $("#submit-import").disabled = true;
+    toast("PGN procesado", `${result.dataset.games.length} partidas en un dossier independiente${duplicateNote}.`);
+    clearPgnFile();
+    if (result.warnings?.length) {
+      toast("Avisos del PGN", result.warnings.join(" "), "warning", { persistent: true });
+    }
   } catch (error) {
     setLoading(false);
     toast("No se pudo procesar el PGN", error.message, "error");
   }
-}
-
-function openImportDialog() {
-  if (state.player?.fide_id && !$("#fide-id").value.trim()) {
-    $("#fide-id").value = state.player.fide_id;
-    resetFideProfile();
-  }
-  openDialog("import-dialog");
 }
 
 async function submitCombinedProfiles() {
@@ -1547,14 +1643,11 @@ function bindEvents() {
   $("#clear-filters").addEventListener("click", () => {
     $("#game-search").value = ""; $("#filter-color").value = "all"; $("#filter-result").value = "all"; state.openingFilter = null; renderGames();
   });
-  $("#open-import-bottom").addEventListener("click", () => {
-    $("#manual-import").open = true;
-    openImportDialog();
-  });
   $("#open-combine").addEventListener("click", () => openDialog("combine-dialog"));
   $$('[data-close-dialog]').forEach((button) => button.addEventListener("click", () => closeDialog(button.dataset.closeDialog)));
   $$(".dialog-backdrop").forEach((backdrop) => backdrop.addEventListener("mousedown", (event) => { if (event.target === backdrop) closeDialog(backdrop.id); }));
   $("#pgn-file").addEventListener("change", (event) => readPgnFile(event.target.files[0]));
+  $("#remove-pgn-file").addEventListener("click", clearPgnFile);
   $("#fide-id").addEventListener("input", resetFideProfile);
   $("#fide-id").addEventListener("keydown", (event) => {
     if (event.key === "Enter") { event.preventDefault(); verifyFidePlayer(); }

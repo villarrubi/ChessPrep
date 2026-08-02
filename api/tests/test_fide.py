@@ -16,11 +16,38 @@ PROFILE_HTML = """
 
 def test_official_fide_profile_is_parsed(monkeypatch):
     monkeypatch.setattr(fide, "_get_html", lambda _: PROFILE_HTML)
+    monkeypatch.setattr(
+        fide,
+        "_get_rating_history",
+        lambda _: [fide.FideRatingPoint(date="2026-Jul", rating=2837, rapid_rating=2818, blitz_rating=2881)],
+    )
     player = fide.get_player("1503014")
     assert player.name == "Carlsen, Magnus"
     assert player.federation == "Norway"
     assert player.title == "GM"
     assert (player.standard_rating, player.rapid_rating, player.blitz_rating) == (2837, 2818, 2881)
+    assert player.rating_history[0].rating == 2837
+    assert player.rating_history[0].rapid_rating == 2818
+    assert player.rating_history[0].blitz_rating == 2881
+
+
+def test_fide_rating_history_is_validated_and_deduplicated():
+    history = fide._parse_rating_history(
+        [
+            {"date_2": "2026-May", "rating": "2815", "rapid_rtng": "2801", "blitz_rtng": "2790"},
+            {"date_2": "2026-Jun", "rating": "2826", "rapid_rtng": "2812", "blitz_rtng": "2805"},
+            {"date_2": "2026-Jun", "rating": "2999"},
+            {"date_2": "<script>", "rating": "3000"},
+            {"date_2": "2026-Jul", "rating": "not-a-number", "rapid_rtng": "2819"},
+            {"date_2": "2026-Aug", "rating": "99999"},
+        ]
+    )
+
+    assert [(point.date, point.rating, point.rapid_rating, point.blitz_rating) for point in history] == [
+        ("2026-May", 2815, 2801, 2790),
+        ("2026-Jun", 2826, 2812, 2805),
+        ("2026-Jul", None, 2819, None),
+    ]
 
 
 def test_fide_name_matching_accepts_order_and_initial_but_not_same_surname_only():
