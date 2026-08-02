@@ -274,7 +274,16 @@
         <button class="dialog-close viewer-close" type="button" data-close-dialog="viewer-dialog" aria-label="Cerrar visor">×</button>
         <div class="viewer-board-column">
           <div class="board-player board-player-top" id="board-player-top"></div>
-          <div class="chessboard" id="chessboard" aria-label="Tablero de ajedrez"></div>
+          <div class="board-with-eval">
+            <div class="eval-bar" id="eval-bar" hidden aria-hidden="true">
+              <div class="eval-bar-fill" id="eval-bar-fill"></div>
+              <span class="eval-bar-label" id="eval-bar-label">0.0</span>
+            </div>
+            <div class="board-stage">
+              <div class="chessboard" id="chessboard" aria-label="Tablero de ajedrez"></div>
+              <svg class="board-arrows" id="board-arrows" viewBox="0 0 8 8" aria-hidden="true"></svg>
+            </div>
+          </div>
           <div class="board-player" id="board-player-bottom"></div>
         </div>
         <div class="viewer-info">
@@ -282,6 +291,39 @@
             <p class="section-kicker">Visor de partida</p>
             <h2 id="viewer-title">Partida</h2>
             <div class="viewer-tags" id="viewer-tags"></div>
+          </div>
+          <div class="analysis-panel" id="analysis-panel">
+            <div class="analysis-toolbar">
+              <label class="analysis-toggle">
+                <input type="checkbox" id="analysis-toggle" />
+                <span>Analizar</span>
+              </label>
+              <button type="button" class="explore-toggle" id="explore-toggle" hidden>Explorar</button>
+              <span class="analysis-status" id="analysis-status"></span>
+            </div>
+            <div class="analysis-body" id="analysis-body" hidden>
+              <div class="analysis-settings" role="group" aria-label="Ajustes del motor">
+                <label class="analysis-setting">
+                  <span>Prof.</span>
+                  <input type="number" id="analysis-depth" min="5" max="30" step="1" value="14" title="Profundidad de análisis (5–30)" />
+                </label>
+                <label class="analysis-setting">
+                  <span>Líneas</span>
+                  <input type="number" id="analysis-lines" min="1" max="30" step="1" value="3" title="Variantes MultiPV (1–30)" />
+                </label>
+              </div>
+              <div class="analysis-summary" id="analysis-summary"></div>
+              <div class="analysis-lines" id="analysis-lines-list" aria-label="Líneas del motor"></div>
+              <canvas class="eval-curve" id="eval-curve" width="320" height="48" aria-label="Curva de evaluación"></canvas>
+              <div class="key-moments" id="key-moments"></div>
+              <div class="explore-bar" id="explore-bar" hidden>
+                <span id="explore-feedback"></span>
+                <div class="explore-actions">
+                  <button type="button" id="explore-undo" disabled>Deshacer</button>
+                  <button type="button" id="explore-exit">Salir</button>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="move-progress"><span id="move-label">Posición inicial</span><span id="move-count">0 / 0</span></div>
           <div class="moves-list" id="moves-list" tabindex="0" aria-label="Lista de jugadas"></div>
@@ -292,7 +334,7 @@
             <button type="button" data-move="next" title="Jugada siguiente">›</button>
             <button type="button" data-move="last" title="Última posición">›|</button>
           </div>
-          <p class="keyboard-tip"><kbd>←</kbd><kbd>→</kbd> para navegar · <kbd>Esc</kbd> para cerrar</p>
+          <p class="keyboard-tip"><kbd>←</kbd><kbd>→</kbd> navegar · <kbd>A</kbd> analizar · <kbd>E</kbd> explorar · <kbd>Esc</kbd> cerrar</p>
           <div class="viewer-source" id="viewer-source"></div>
         </div>
       </section>
@@ -328,6 +370,10 @@
     </div>
     <div class="toast-region" id="toast-region" aria-live="polite"></div>
 
+    <script src="/js/moveQuality.js" defer></script>
+    <script src="/js/stockfishEngine.js" defer></script>
+    <script src="/js/gameAnalysis.js" defer></script>
+    <script src="/js/exploreMode.js" defer></script>
     <script src="/app.js" defer></script>
   </body>
 </html>

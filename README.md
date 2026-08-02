@@ -12,6 +12,7 @@ Aplicación web de preparación ajedrecística para torneos. Convierte partidas 
 - Lista de partidas con filtros por texto, color, resultado y apertura.
 - Navegación desde una estadística hasta las partidas que la forman.
 - Visor con posiciones FEN validadas, controles, reproducción y teclado.
+- Análisis Stockfish en el cliente (Web Worker): calidad de jugadas, barra y curva de evaluación, mejor jugada, precisión, momentos clave y modo explorar.
 - Importación OTB mediante ID FIDE obligatorio y PGN, con verificación de identidad, deduplicación y dataset temporal con TTL.
 - Datos de muestra integrados para que el producto funcione sin red.
 - API OpenAPI documentada en `/api/docs`.
@@ -21,6 +22,8 @@ Aplicación web de preparación ajedrecística para torneos. Convierte partidas 
 
 ```text
 web/                       SPA responsive (HTML, CSS y JavaScript)
+web/js/                    Motor Stockfish (cliente), calidad de jugadas y modo explorar
+web/vendor/                chess.js y Stockfish WASM/JS (ver vendor/NOTICE.md)
 api/app/main.py            Endpoints FastAPI y servidor local del frontend
 api/app/services/pgn.py    Normalización PGN, SAN, UCI, FEN y deduplicación
 api/app/services/stats.py  Filtros y estadísticas deterministas
@@ -29,6 +32,10 @@ api/app/providers/         Integraciones oficiales con Lichess y Chess.com
 api/tests/                 Pruebas del contrato, parser y estadísticas
 docker-compose.yml         Servicios web y api separados
 ```
+
+### Análisis Stockfish (cliente)
+
+El visor puede activar **Analizar** (tecla `A`) para evaluar la partida en el navegador con Stockfish. No hay endpoint de motor en la API: el Worker carga `/vendor/stockfish/stockfish.js` y clasifica cada jugada por pérdida en centipawns. En el panel puedes ajustar **profundidad (5–30)** y **líneas MultiPV (1–30)**; por defecto usa profundidad 14 y 3 líneas. El modo **Explorar** (tecla `E`) permite probar jugadas en la posición actual. El tiempo depende de la CPU del dispositivo; partidas largas se rellenan de forma progresiva.
 
 El documento técnico proponía Next.js como una tecnología orientativa. Para este MVP se ha usado una SPA sin proceso de build: mantiene la separación `web/api`, reduce dependencias y permite ejecutar el producto con Python solamente. FastAPI también sirve los archivos web en desarrollo; en Docker, Nginx expone el frontend y redirige `/api` al servicio correspondiente.
 
