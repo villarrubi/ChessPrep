@@ -799,15 +799,19 @@ function renderBoardArrow() {
   const len = Math.hypot(dx, dy) || 1;
   const ux = dx / len;
   const uy = dy / len;
-  const tipX = to.x - ux * 0.22;
-  const tipY = to.y - uy * 0.22;
-  const head = 0.28;
-  const leftX = tipX - uy * head * 0.55 - ux * head;
-  const leftY = tipY + ux * head * 0.55 - uy * head;
-  const rightX = tipX + uy * head * 0.55 - ux * head;
-  const rightY = tipY - ux * head * 0.55 - uy * head;
+  // Tip near destination; shaft stops at the arrowhead base so it doesn't poke through.
+  const tipX = to.x - ux * 0.12;
+  const tipY = to.y - uy * 0.12;
+  const headLen = Math.min(0.42, Math.max(0.28, len * 0.28));
+  const headWidth = 0.18;
+  const baseX = tipX - ux * headLen;
+  const baseY = tipY - uy * headLen;
+  const leftX = baseX - uy * headWidth;
+  const leftY = baseY + ux * headWidth;
+  const rightX = baseX + uy * headWidth;
+  const rightY = baseY - ux * headWidth;
   svg.innerHTML = `
-    <line x1="${from.x}" y1="${from.y}" x2="${tipX}" y2="${tipY}"></line>
+    <line x1="${from.x}" y1="${from.y}" x2="${baseX}" y2="${baseY}"></line>
     <polygon points="${tipX},${tipY} ${leftX},${leftY} ${rightX},${rightY}"></polygon>
   `;
 }
