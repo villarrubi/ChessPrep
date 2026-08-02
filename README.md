@@ -8,7 +8,8 @@ Aplicación web de preparación ajedrecística para torneos. Convierte partidas 
 - Dossier combinado para unir ambas plataformas aunque los alias sean distintos.
 - Dossier de jugador con score global, forma reciente y desglose por color.
 - Repertorio por ECO, apertura, color, frecuencia y score.
-- Selector de ritmo `global / blitz / rápida / lenta` aplicado a partidas y estadísticas; bullet queda fuera del análisis.
+- Selector de ritmo `global / bullet / blitz / rápida / lenta` aplicado a partidas y estadísticas; global incluye todos los ritmos estándar.
+- Solo se analizan partidas de ajedrez estándar; Chess960, pasapiezas, Crazyhouse y demás variantes se excluyen tanto desde los proveedores como al importar PGN.
 - Lista de partidas con filtros por texto, color, resultado y apertura.
 - Navegación desde una estadística hasta las partidas que la forman.
 - Visor con posiciones FEN validadas, controles, reproducción y teclado.
@@ -38,6 +39,14 @@ docker-compose.yml         Servicios web y api separados
 El visor puede activar **Analizar** (tecla `A`) para evaluar la partida en el navegador con Stockfish. No hay endpoint de motor en la API: el Worker carga `/vendor/stockfish/stockfish.js` y clasifica cada jugada por pérdida en centipawns. En el panel puedes ajustar **profundidad (5–30)** y **líneas MultiPV (1–30)**; por defecto usa profundidad 14 y 3 líneas. El modo **Explorar** (tecla `E`) permite probar jugadas en la posición actual. El tiempo depende de la CPU del dispositivo; partidas largas se rellenan de forma progresiva.
 
 El documento técnico proponía Next.js como una tecnología orientativa. Para este MVP se ha usado una SPA sin proceso de build: mantiene la separación `web/api`, reduce dependencias y permite ejecutar el producto con Python solamente. FastAPI también sirve los archivos web en desarrollo; en Docker, Nginx expone el frontend y redirige `/api` al servicio correspondiente.
+
+### Muestras, ritmos y variantes
+
+La interfaz solicita como máximo las 100 partidas estándar más recientes de cada proveedor. El ritmo **Global** no aplica un filtro temporal; **Bullet**, **Blitz**, **Rápida** y **Lenta** muestran únicamente su categoría.
+
+Lichess se consulta solo con sus modalidades estándar (`ultraBullet`, `bullet`, `blitz`, `rapid`, `classical` y `correspondence`). En Chess.com se aceptan exclusivamente partidas con `rules="chess"`. La misma regla se aplica a los PGN importados: se omiten Chess960, pasapiezas, Crazyhouse, atómico, antiajedrez y cualquier partida declarada como variante o con una posición inicial no estándar. Cuando el proveedor permite contabilizarlas, la respuesta incluye un aviso con el número de partidas descartadas.
+
+Un ECO ausente se conserva como valor nulo y se representa visualmente con `—`. Al pulsar una fila de aperturas, el listado se filtra por ECO, nombre y color; por tanto, el total mostrado corresponde exactamente al grupo seleccionado, incluso en aperturas sin ECO.
 
 ## Arranque local en Windows
 
@@ -72,7 +81,7 @@ docker compose up --build
 .venv\Scripts\python -m pytest -q
 ```
 
-Las pruebas comprueban el dataset de muestra, los totales estadísticos, los filtros por ritmo, la trazabilidad de una partida, las posiciones del visor y la deduplicación de PGN.
+Las pruebas comprueban el dataset de muestra, los totales estadísticos, los filtros por ritmo y apertura, la exclusión de variantes, la trazabilidad de una partida, las posiciones del visor, las integraciones de proveedor y la deduplicación de PGN.
 
 ## API principal
 
@@ -99,8 +108,8 @@ Cada resultado estadístico declara su muestra, fuentes, ritmo y rango temporal.
 Copia `.env.example` si quieres modificar:
 
 - `CHESSPREP_DATASET_TTL_MINUTES`: duración del dataset temporal.
-- `CHESSPREP_LICHESS_MAX_GAMES`: máximo de partidas por actualización.
-- `CHESSPREP_CHESSCOM_MAX_GAMES`: máximo de partidas de Chess.com por actualización.
+- `CHESSPREP_LICHESS_MAX_GAMES`: límite predeterminado de Lichess cuando la llamada no indica uno explícito.
+- `CHESSPREP_CHESSCOM_MAX_GAMES`: límite predeterminado de Chess.com cuando la llamada no indica uno explícito.
 - `CHESSPREP_CORS_ORIGINS`: orígenes admitidos por la API.
 - `CHESSPREP_ALLOWED_HOSTS`: nombres de host admitidos, sin protocolo ni puerto.
 - `CHESSPREP_ENABLE_DOCS`: activa o desactiva `/api/docs` y el esquema OpenAPI.

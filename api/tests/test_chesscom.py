@@ -37,6 +37,7 @@ def test_chesscom_profile_and_archive_are_normalized(monkeypatch):
             return {
                 "games": [
                     {"rules": "chess", "url": "https://www.chess.com/game/live/123", "pgn": SAMPLE_PGN},
+                    {"rules": "chess960", "url": "https://www.chess.com/game/live/960", "pgn": SAMPLE_PGN},
                     {"rules": "chess", "url": "https://www.chess.com/game/live/124", "pgn": SAMPLE_PGN_2},
                 ]
             }
@@ -58,3 +59,4 @@ def test_chesscom_profile_and_archive_are_normalized(monkeypatch):
     assert {game.id for game in parsed.games} == {"chess.com-live-123", "chess.com-live-124"}
     assert all(game.source == "chess.com" for game in parsed.games)
     assert all(game.game_type.value == "online" for game in parsed.games)
+    assert any("Chess960" in warning for warning in parsed.errors)

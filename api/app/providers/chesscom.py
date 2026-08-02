@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+from collections import Counter
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
 
 from api.app.models import GameType, PlayerRef
-from api.app.services.pgn import ParseResult, parse_pgn
+from api.app.services.pgn import ParseResult, parse_pgn, variant_exclusion_warning, variant_label
 from api.app.services.text import clean_identifier, clean_untrusted_text
 
 
@@ -115,28 +116,38 @@ def fetch_games(username: str, max_games: int | None = None) -> ParseResult:
     archive_index = _get_json(f"/pub/player/{encoded_username}/games/archives")
     archives = archive_index.get("archives", [])
     collected: list[str] = []
+    excluded_variants: Counter[str] = Counter()
 
     # Chess.com recommends serial access. Start with the most recent month and
     # only request older archives when the configured sample still needs games.
     for archive_url in reversed(archives):
         archive = _get_json(archive_url, timeout=20)
-        standard_games = [
-            annotated
-            for game in archive.get("games", [])
-            if game.get("rules", "chess") == "chess"
-            if (annotated := _pgn_with_external_id(game))
-        ]
+        standard_games = []
+        for game in archive.get("games", []):
+            rules = str(game.get("rules") or "chess")
+            if rules != "chess":
+                excluded_variants[variant_label(rules)] += 1
+                continue
+            annotated = _pgn_with_external_id(game)
+            if annotated:
+                standard_games.append(annotated)
         remaining = limit - len(collected)
         collected = standard_games[-remaining:] + collected
         if len(collected) >= limit:
             break
 
     if not collected:
-        return ParseResult(games=[], errors=["Chess.com no devolvió partidas públicas estándar."], duplicates=0)
-    return parse_pgn(
+        errors = ["Chess.com no devolvió partidas públicas estándar."]
+        if excluded_variants:
+            errors.append(variant_exclusion_warning(excluded_variants))
+        return ParseResult(games=[], errors=errors, duplicates=0)
+    parsed = parse_pgn(
         "\n\n".join(collected[-limit:]),
         source="chess.com",
         game_type=GameType.ONLINE,
         target_player=username,
         confidence="official",
     )
+    if excluded_variants:
+        parsed.errors.append(variant_exclusion_warning(excluded_variants))
+    return parsed

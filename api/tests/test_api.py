@@ -24,6 +24,53 @@ def test_security_headers_are_applied_to_api_and_web():
         assert response.headers["x-frame-options"] == "DENY"
         assert response.headers["referrer-policy"] == "no-referrer"
         assert response.headers["x-xss-protection"] == "0"
+    assert client.get("/").headers["cache-control"] == "no-cache"
+    assert client.get("/app.js").headers["cache-control"] == "no-cache"
+    assert client.get("/api/v1/health").headers["cache-control"] == "no-store"
+
+
+def test_loader_cycles_all_pieces_without_disabling_its_timer():
+    index = client.get("/").text
+    script = client.get("/app.js").text
+
+    assert "/app.js?v=20260802-loader2" in index
+    assert 'const LOADER_PIECES = ["♙", "♘", "♗", "♖", "♕", "♔"];' in script
+    assert "const LOADER_INTERVAL_MS = 450;" in script
+    assert "window.setInterval(advanceLoaderPiece, LOADER_INTERVAL_MS)" in script
+    assert 'if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;' not in script
+
+
+def test_pgn_import_excludes_non_standard_variants():
+    standard = """[Event "Standard"]
+[White "Target"]
+[Black "Opponent"]
+[Result "1-0"]
+
+1. e4 e5 2. Nf3 Nc6 1-0
+"""
+    chess960 = standard.replace(
+        '[Event "Standard"]', '[Event "Chess960"]\n[Variant "Chess960"]'
+    )
+    crazyhouse = standard.replace(
+        '[Event "Standard"]', '[Event "Crazyhouse"]\n[Variant "Crazyhouse"]'
+    )
+    custom_position = standard.replace(
+        '[Event "Standard"]',
+        '[Event "Custom position"]\n[SetUp "1"]\n[FEN "8/8/8/8/8/8/4K3/7k w - - 0 1"]',
+    )
+
+    parsed = parse_pgn(
+        "\n\n".join((standard, chess960, crazyhouse, custom_position)),
+        source="upload",
+        game_type=GameType.ONLINE,
+        target_player="Target",
+    )
+
+    assert len(parsed.games) == 1
+    assert "Chess960" in parsed.errors[-1]
+    assert "Crazyhouse" in parsed.errors[-1]
+    assert "Posición inicial no estándar" in parsed.errors[-1]
+    assert "Se omitieron 3 partidas" in parsed.errors[-1]
 
 
 def test_untrusted_host_and_oversized_request_are_rejected():

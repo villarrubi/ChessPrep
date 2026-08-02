@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import re
+from collections import Counter
 from dataclasses import dataclass
 
 import chess.pgn
@@ -46,6 +47,23 @@ ECO_NAMES = {
     "E90": "Defensa India de Rey",
 }
 MAX_GAMES_PER_IMPORT = 500
+STANDARD_VARIANTS = {"standard", "standard chess", "chess", "normal"}
+STANDARD_START_POSITION = " ".join(chess.STARTING_FEN.split()[:4])
+VARIANT_LABELS = {
+    "chess960": "Chess960",
+    "fischerandom": "Chess960",
+    "fischer random": "Chess960",
+    "bughouse": "Pasapiezas",
+    "crazyhouse": "Crazyhouse",
+    "kingofthehill": "Rey de la colina",
+    "king of the hill": "Rey de la colina",
+    "threecheck": "Tres jaques",
+    "three-check": "Tres jaques",
+    "antichess": "Antiajedrez",
+    "atomic": "Ajedrez atómico",
+    "horde": "Horda",
+    "racingkings": "Reyes de carrera",
+}
 
 
 @dataclass
@@ -53,6 +71,34 @@ class ParseResult:
     games: list[NormalizedGame]
     errors: list[str]
     duplicates: int
+
+
+def variant_label(value: str) -> str:
+    cleaned = clean_untrusted_text(value, max_length=80)
+    return VARIANT_LABELS.get(cleaned.casefold().replace("_", ""), cleaned or "Variante desconocida")
+
+
+def variant_exclusion_warning(counts: Counter[str]) -> str:
+    total = sum(counts.values())
+    details = ", ".join(
+        f"{label}: {count}" if count > 1 else label
+        for label, count in sorted(counts.items())
+    )
+    if total == 1:
+        return f"Se omitió 1 partida de variante no estándar ({details})."
+    return f"Se omitieron {total} partidas de variantes no estándar ({details})."
+
+
+def _non_standard_variant(headers: chess.pgn.Headers) -> str | None:
+    raw_variant = clean_untrusted_text(headers.get("Variant"), max_length=80)
+    if raw_variant and raw_variant.casefold() not in STANDARD_VARIANTS:
+        return variant_label(raw_variant)
+
+    fen = clean_untrusted_text(headers.get("FEN"), max_length=120)
+    custom_setup = headers.get("SetUp") == "1" or bool(fen)
+    if custom_setup and " ".join(fen.split()[:4]) != STANDARD_START_POSITION:
+        return "Posición inicial no estándar"
+    return None
 
 
 def _safe_int(value: str | None) -> int | None:
@@ -121,6 +167,7 @@ def parse_pgn(
     errors: list[str] = []
     seen: set[str] = set()
     seen_game_ids: set[str] = set()
+    excluded_variants: Counter[str] = Counter()
     duplicates = 0
     game_number = 0
 
@@ -139,11 +186,15 @@ def parse_pgn(
         if game is None:
             break
         game_number += 1
+        headers = game.headers
+        non_standard_variant = _non_standard_variant(headers)
+        if non_standard_variant:
+            excluded_variants[non_standard_variant] += 1
+            continue
         if game.errors:
             detail = clean_untrusted_text(game.errors[0], max_length=300)
             errors.append(f"Partida {game_number}: se ignoraron jugadas no válidas ({detail}).")
 
-        headers = game.headers
         white = clean_untrusted_text(headers.get("White"), max_length=160) or "Blancas"
         black = clean_untrusted_text(headers.get("Black"), max_length=160) or "Negras"
         result = headers.get("Result", "*")
@@ -236,4 +287,6 @@ def parse_pgn(
 
     if game_number == 0:
         errors.append("No se encontró ninguna partida PGN.")
+    if excluded_variants:
+        errors.append(variant_exclusion_warning(excluded_variants))
     return ParseResult(games=games, errors=errors, duplicates=duplicates)

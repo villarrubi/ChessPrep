@@ -137,6 +137,11 @@ async def protect_http_boundary(request, call_next):
     response.headers["X-XSS-Protection"] = "0"
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
+    elif (
+        request.url.path == "/"
+        or request.url.path.endswith((".html", ".js", ".css"))
+    ):
+        response.headers["Cache-Control"] = "no-cache"
     return response
 
 

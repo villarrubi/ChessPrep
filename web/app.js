@@ -9,7 +9,7 @@ const state = {
   pace: "global",
   source: "all",
   openingColor: "all",
-  selectedEco: null,
+  openingFilter: null,
   viewerGame: null,
   ply: 0,
   playTimer: null,
@@ -54,6 +54,10 @@ const PIECES = {
   K: "♔", Q: "♕", R: "♖", B: "♗", N: "♘", P: "♙",
   k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟",
 };
+const LOADER_PIECES = ["♙", "♘", "♗", "♖", "♕", "♔"];
+const LOADER_INTERVAL_MS = 450;
+let loaderPieceIndex = 0;
+let loaderTimer = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -127,19 +131,58 @@ async function api(path, options = {}) {
   return payload;
 }
 
+function advanceLoaderPiece() {
+  const piece = $("#loader-piece");
+  if (!piece) return;
+  piece.textContent = LOADER_PIECES[loaderPieceIndex];
+  loaderPieceIndex = (loaderPieceIndex + 1) % LOADER_PIECES.length;
+  piece.classList.remove("sliding");
+  void piece.offsetWidth;
+  piece.classList.add("sliding");
+}
+
+function startLoaderPieces() {
+  if (loaderTimer !== null) return;
+  loaderPieceIndex = 0;
+  advanceLoaderPiece();
+  loaderTimer = window.setInterval(advanceLoaderPiece, LOADER_INTERVAL_MS);
+}
+
+function stopLoaderPieces() {
+  if (loaderTimer === null) return;
+  window.clearInterval(loaderTimer);
+  loaderTimer = null;
+}
+
 function setLoading(visible, text = "Preparando el tablero…") {
   $("#loading-text").textContent = text;
   $("#loading-layer").hidden = !visible;
+  if (visible) startLoaderPieces();
+  else stopLoaderPieces();
 }
 
-function toast(title, message = "", type = "success") {
+function toast(title, message = "", type = "success", { persistent = false } = {}) {
   const node = document.createElement("div");
-  node.className = `toast ${type === "error" ? "error" : "success"}`;
+  const safeType = ["error", "warning"].includes(type) ? type : "success";
+  node.className = `toast ${safeType}${persistent ? " persistent" : ""}`;
+  node.setAttribute("role", safeType === "error" ? "alert" : "status");
+  const copy = document.createElement("div");
+  copy.className = "toast-copy";
   const heading = document.createElement("strong");
   heading.textContent = String(title ?? "");
-  node.append(heading, document.createTextNode(String(message ?? "")));
+  copy.append(heading, document.createTextNode(String(message ?? "")));
+  node.append(copy);
+  if (persistent) {
+    const close = document.createElement("button");
+    close.className = "toast-close";
+    close.type = "button";
+    close.setAttribute("aria-label", "Cerrar aviso");
+    close.textContent = "×";
+    close.addEventListener("click", () => node.remove());
+    node.append(close);
+  }
   $("#toast-region").append(node);
-  setTimeout(() => node.remove(), 4200);
+  if (!persistent) setTimeout(() => node.remove(), 4200);
 }
 
 function renderMiniBoard() {
@@ -171,7 +214,7 @@ async function loadPlayer(player, { scroll = false } = {}) {
     state.stats = stats;
     state.games = games.items;
     state.datasetId = games.trace?.dataset_id || null;
-    state.selectedEco = null;
+    state.openingFilter = null;
     renderAll();
     if (scroll) $("#analisis").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
@@ -210,7 +253,14 @@ async function searchPlayer(event) {
         body: JSON.stringify({ lichess_username: query, chesscom_username: query }),
       });
       player = combined.dataset.player;
-      if (combined.warnings.length) toast("Dossier creado con avisos", combined.warnings.join(" "));
+      if (combined.warnings.length) {
+        toast(
+          "Dossier creado con avisos",
+          combined.warnings.join(" "),
+          "warning",
+          { persistent: true },
+        );
+      }
     } else {
       const search = await api(`/players/search?q=${encodeURIComponent(query)}&source=${encodeURIComponent(selectedSource)}`);
       if (!search.results.length) throw new Error(search.message || "No encontramos ese usuario exacto.");
@@ -239,7 +289,7 @@ async function switchPace(pace) {
     ]);
     state.stats = stats;
     state.games = games.items;
-    state.selectedEco = null;
+    state.openingFilter = null;
     renderAll();
   } catch (error) {
     toast("No se pudo aplicar el ritmo", error.message, "error");
@@ -294,17 +344,19 @@ function renderColorMetric(color, record) {
 
 function renderOpenings() {
   const rows = state.stats.openings.filter((item) => state.openingColor === "all" || item.color === state.openingColor);
-  $("#openings-body").innerHTML = rows.slice(0, 8).map((item) => `
-    <tr data-eco="${escapeHtml(item.eco)}" tabindex="0" aria-label="Filtrar partidas por ${escapeHtml(item.opening)}">
-      <td class="opening-cell"><strong>${escapeHtml(item.opening)}</strong><span>${escapeHtml(item.eco)} · ${formatNumber(item.share_pct)}% de la muestra</span></td>
+  const visibleRows = rows.slice(0, 8);
+  $("#openings-body").innerHTML = visibleRows.map((item, index) => `
+    <tr data-opening-index="${index}" tabindex="0" aria-label="Filtrar partidas por ${escapeHtml(item.opening)}">
+      <td class="opening-cell"><strong>${escapeHtml(item.opening)}</strong><span>${escapeHtml(item.eco || "—")} · ${formatNumber(item.share_pct)}% de la muestra</span></td>
       <td><span class="color-pill ${item.color}"><i></i>${item.color === "white" ? "Blancas" : "Negras"}</span></td>
       <td><strong>${item.games}</strong></td>
       <td class="score-cell">${formatNumber(item.score_pct)}%</td>
       <td class="row-arrow">→</td>
     </tr>
   `).join("") || `<tr><td colspan="5">No hay aperturas para este color.</td></tr>`;
-  $$("#openings-body tr[data-eco]").forEach((row) => {
-    const select = () => selectOpening(row.dataset.eco);
+  $$("#openings-body tr[data-opening-index]").forEach((row) => {
+    const opening = visibleRows[Number(row.dataset.openingIndex)];
+    const select = () => selectOpening(opening);
     row.addEventListener("click", select);
     row.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") select(); });
   });
@@ -327,12 +379,18 @@ function selectedGames() {
   const text = $("#game-search").value.trim().casefold?.() || $("#game-search").value.trim().toLocaleLowerCase();
   const color = $("#filter-color").value;
   const result = $("#filter-result").value;
+  const openingFilter = state.openingFilter;
   return state.games.filter((game) => {
     const haystack = `${game.white} ${game.black} ${game.event || ""} ${game.opening} ${game.eco || ""}`.toLocaleLowerCase();
+    const matchesOpening = !openingFilter || (
+      game.eco === openingFilter.eco &&
+      game.opening === openingFilter.opening &&
+      game.player_color === openingFilter.color
+    );
     return (!text || haystack.includes(text)) &&
       (color === "all" || game.player_color === color) &&
       (result === "all" || outcome(game) === result) &&
-      (!state.selectedEco || game.eco === state.selectedEco);
+      matchesOpening;
   });
 }
 
@@ -359,16 +417,24 @@ function renderGames() {
   }).join("");
   $$(".game-open").forEach((button) => button.addEventListener("click", () => openGame(button.dataset.gameSource, button.dataset.gameId)));
   const active = $("#active-filter");
-  active.hidden = !state.selectedEco;
-  if (state.selectedEco) active.innerHTML = `Apertura activa: <strong>${escapeHtml(state.selectedEco)}</strong><button type="button" aria-label="Quitar filtro de apertura">× Quitar</button>`;
-  active.querySelector("button")?.addEventListener("click", () => { state.selectedEco = null; renderGames(); });
+  active.hidden = !state.openingFilter;
+  if (state.openingFilter) {
+    const filterLabel = `${state.openingFilter.eco || "Sin ECO"} · ${state.openingFilter.opening}`;
+    active.innerHTML = `Apertura activa: <strong>${escapeHtml(filterLabel)}</strong><button type="button" aria-label="Quitar filtro de apertura">× Quitar</button>`;
+  }
+  active.querySelector("button")?.addEventListener("click", () => { state.openingFilter = null; renderGames(); });
 }
 
-function selectOpening(eco) {
-  state.selectedEco = eco;
+function selectOpening(opening) {
+  state.openingFilter = {
+    eco: opening.eco || null,
+    opening: opening.opening,
+    color: opening.color,
+  };
   renderGames();
   $("#partidas").scrollIntoView({ behavior: "smooth", block: "start" });
-  toast("Filtro aplicado", `Mostrando las partidas de la apertura ${eco}.`);
+  const ecoLabel = opening.eco || "sin código ECO";
+  toast("Filtro aplicado", `Mostrando ${opening.games} partidas de ${ecoLabel}.`);
 }
 
 async function refreshCurrentPlayer() {
@@ -1184,7 +1250,14 @@ async function submitCombinedProfiles() {
     await loadPlayer(result.dataset.player, { scroll: true });
     const sources = result.dataset.sources.map(sourceLabel).join(" + ");
     toast("Dossier combinado", `${result.dataset.games.length} partidas de ${sources}.`);
-    if (result.warnings.length) toast("Avisos de las fuentes", result.warnings.join(" "));
+    if (result.warnings.length) {
+      toast(
+        "Avisos de las fuentes",
+        result.warnings.join(" "),
+        "warning",
+        { persistent: true },
+      );
+    }
   } catch (error) {
     setLoading(false);
     toast("No se pudieron combinar los perfiles", error.message, "error");
@@ -1210,7 +1283,7 @@ function bindEvents() {
   }));
   ["game-search", "filter-color", "filter-result"].forEach((id) => document.getElementById(id).addEventListener(id === "game-search" ? "input" : "change", renderGames));
   $("#clear-filters").addEventListener("click", () => {
-    $("#game-search").value = ""; $("#filter-color").value = "all"; $("#filter-result").value = "all"; state.selectedEco = null; renderGames();
+    $("#game-search").value = ""; $("#filter-color").value = "all"; $("#filter-result").value = "all"; state.openingFilter = null; renderGames();
   });
   ["open-import", "open-import-bottom"].forEach((id) => document.getElementById(id).addEventListener("click", openImportDialog));
   $("#open-combine").addEventListener("click", () => openDialog("combine-dialog"));

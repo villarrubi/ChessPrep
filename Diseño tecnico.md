@@ -172,9 +172,11 @@ class RawGame(BaseModel):
 
 **OTB:** Lumbra's Gigabase (bulk principal) · TWIC (actualidad) · YottaChess / 365chess / chessgames (fallback por nombre; scraping — revisar ToS) · Caissabase · chess-results (identidad, sin PGN) · FIDE (metadatos) · importación manual PGN desde el navegador  
 
-**Alcance del MVP:** Lichess como proveedor online y PGN manual como entrada OTB/de prueba. No se hace ingesta masiva OTB en esta fase.
+**Alcance implementado del MVP:** Lichess y Chess.com como proveedores online; para OTB se exige un ID FIDE válido y un PGN cuyas cabeceras permitan verificar al jugador. No se hace ingesta masiva OTB en esta fase.
 
-**Orden de prioridad futura:** Gigabase → TWIC → Lichess/Chess.com → fallbacks web → PGN manual.
+**Regla de modalidad:** solo se normaliza ajedrez estándar. Lichess se limita a ritmos estándar, Chess.com exige `rules="chess"` y el parser PGN descarta variantes o posiciones iniciales no estándar. Bullet se conserva como ritmo, no como variante.
+
+**Orden de prioridad futura para ampliar OTB:** Gigabase → TWIC → fallbacks web → PGN manual.
 
 Los proveedores OTB sin API pública se tratan como fallback de baja frecuencia, no como sync masivo.
 
@@ -223,16 +225,16 @@ El resultado debe incluir siempre el tamaño de la muestra, fuentes, rango tempo
 ### 8.1 Agregados prioritarios (MVP)
 
 1. **Por color:** partidas, score, % W/D/L con blancas y con negras.
-2. **Por apertura:** top ECO/nombres, frecuencia, score, desglose por color.
+2. **Por apertura:** top ECO/nombres, frecuencia, score y desglose por color. Un ECO ausente permanece como `null`; `—` es únicamente su representación visual y el enlace filtra por ECO, nombre y color.
 3. **Lista enlazable:** cada celda/stats debe poder abrir el listado de partidas subyacente → visor.
 4. **Piezas (v1):** a partir del PGN parseado, métricas simples por tipo de pieza del jugador (frecuencia de movimientos, capturas realizadas/sufridas, presencia en el último tercio de la partida). Refinar definición en implementación; siempre con `n` visible.
 
-### 8.2 Stockfish (post-MVP, opcional)
+### 8.2 Stockfish (implementado en el cliente)
 
-Solo si se quiere calidad de jugada en el visor o métricas de “errores por fase”:
+El visor ejecuta Stockfish en un Web Worker del navegador, sin bloquear la API ni enviar posiciones a servicios externos:
 
-- Worker UCI → `EngineEvaluation` por partida.
-- Progreso vía SSE; no bloquea stats básicas ni la reproducción paso a paso.
+- Worker UCI → evaluación, líneas MultiPV, calidad de jugada y momentos clave.
+- Análisis progresivo y modo explorar; las estadísticas básicas y la reproducción paso a paso no dependen del motor.
 - Sin texto generado: solo números (centipawns, clasificación de jugada).
 
 ---

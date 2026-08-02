@@ -32,8 +32,6 @@ def filter_games(
     for game in games:
         if mode != Mode.COMBINED and game.game_type.value != mode.value:
             continue
-        if pace == Pace.GLOBAL and game.time_class == "bullet":
-            continue
         if pace != Pace.GLOBAL and game.time_class != pace.value:
             continue
         if color and color != "all" and game.player_color != color:
@@ -94,9 +92,9 @@ def calculate_stats(
             }
         )
 
-    grouped: dict[tuple[str, str, str], list[NormalizedGame]] = defaultdict(list)
+    grouped: dict[tuple[str | None, str, str], list[NormalizedGame]] = defaultdict(list)
     for game in selected:
-        grouped[(game.eco or "—", game.opening, game.player_color)].append(game)
+        grouped[(game.eco, game.opening, game.player_color)].append(game)
     openings = [
         {
             "eco": key[0],
@@ -107,7 +105,9 @@ def calculate_stats(
         }
         for key, group_games in grouped.items()
     ]
-    openings.sort(key=lambda item: (-item["games"], -item["score_pct"], item["eco"]))
+    openings.sort(
+        key=lambda item: (-item["games"], -item["score_pct"], item["eco"] or "")
+    )
 
     recent = sorted(selected, key=lambda game: game.date or "", reverse=True)[:8]
     form = [

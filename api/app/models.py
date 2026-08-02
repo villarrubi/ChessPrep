@@ -22,6 +22,7 @@ class Mode(str, Enum):
 
 class Pace(str, Enum):
     GLOBAL = "global"
+    BULLET = "bullet"
     BLITZ = "blitz"
     RAPID = "rapid"
     CLASSICAL = "classical"

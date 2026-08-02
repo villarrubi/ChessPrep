@@ -14,6 +14,14 @@ from api.app.services.text import clean_identifier, clean_untrusted_text
 BASE_URL = "https://lichess.org"
 USER_AGENT = "ChessPrep/1.0 (educational tournament preparation tool)"
 MAX_RESPONSE_BYTES = 12_000_000
+STANDARD_PERF_TYPES = (
+    "ultraBullet",
+    "bullet",
+    "blitz",
+    "rapid",
+    "classical",
+    "correspondence",
+)
 
 
 class ProviderUnavailable(RuntimeError):
@@ -81,7 +89,8 @@ def get_player(username: str) -> PlayerRef:
 def fetch_games(username: str, max_games: int | None = None) -> ParseResult:
     configured_max = int(os.getenv("CHESSPREP_LICHESS_MAX_GAMES", "100"))
     limit = min(max(max_games or configured_max, 1), 100)
-    query = f"max={limit}&clocks=false&evals=false&opening=true"
+    standard_perfs = ",".join(STANDARD_PERF_TYPES)
+    query = f"max={limit}&clocks=false&evals=false&opening=true&perfType={standard_perfs}"
     encoded_username = quote(clean_untrusted_text(username, max_length=80), safe="")
     body = _get(
         f"/api/games/user/{encoded_username}?{query}",
