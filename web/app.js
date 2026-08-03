@@ -2,6 +2,11 @@
 
 const API = "/api/v1";
 const MAX_PGN_BYTES = 5_000_000;
+const i18n = window.ChessPrepI18n;
+const t = (key, variables) => i18n?.t(key, variables) ?? key;
+const currentLocale = () => i18n?.getLocale() || "es-ES";
+const countLabel = (count, singularKey = "count.game", pluralKey = "count.games") =>
+  t(Number(count) === 1 ? singularKey : pluralKey);
 const state = {
   player: null,
   stats: null,
@@ -16,6 +21,8 @@ const state = {
   pgnText: "",
   fideProfile: null,
   info64Results: null,
+  eloGameResult: null,
+  eloInitialResult: null,
   datasetId: null,
   analysisEnabled: false,
   analysis: null,
@@ -70,17 +77,17 @@ function escapeHtml(value) {
 }
 
 function formatNumber(value, decimals = 1) {
-  return Number(value || 0).toLocaleString("es-ES", {
+  return Number(value || 0).toLocaleString(currentLocale(), {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
 }
 
 function shortDate(date) {
-  if (!date) return "Fecha desconocida";
+  if (!date) return t("date.unknown");
   const parts = date.split("-");
   if (parts.length < 3) return date;
-  return new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", year: "numeric" })
+  return new Intl.DateTimeFormat(currentLocale(), { day: "numeric", month: "short", year: "numeric" })
     .format(new Date(`${date}T12:00:00`));
 }
 
@@ -89,7 +96,7 @@ function fideRatingDateLabel(value, { long = false } = {}) {
   if (!match) return String(value || "");
   const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].indexOf(match[2]);
   if (month < 0) return String(value || "");
-  return new Intl.DateTimeFormat("es-ES", {
+  return new Intl.DateTimeFormat(currentLocale(), {
     month: long ? "long" : "short",
     year: long ? "numeric" : "2-digit",
     timeZone: "UTC",
@@ -103,9 +110,9 @@ function renderFideRatingTrend(history) {
       [point?.rating, point?.rapid_rating, point?.blitz_rating].some(Number.isFinite))
     .slice(-40);
   const series = [
-    { key: "rating", name: "Lento", suffix: "standard" },
-    { key: "rapid_rating", name: "Rápido", suffix: "rapid" },
-    { key: "blitz_rating", name: "Blitz", suffix: "blitz" },
+    { key: "rating", name: t("pace.classical"), suffix: "standard" },
+    { key: "rapid_rating", name: t("pace.rapid"), suffix: "rapid" },
+    { key: "blitz_rating", name: t("pace.blitz"), suffix: "blitz" },
   ].map((item) => ({
     ...item,
     values: points.flatMap((point, index) => Number.isFinite(point[item.key])
@@ -164,13 +171,16 @@ function renderFideRatingTrend(history) {
   $("#fide-rating-trend-to").textContent = fideRatingDateLabel(points.at(-1).date);
   $("#fide-rating-trend-svg").setAttribute(
     "aria-label",
-    `Evolución desde ${fideRatingDateLabel(points[0].date, { long: true })} hasta ${fideRatingDateLabel(points.at(-1).date, { long: true })}. ` +
-      activeSeries.map((item) => {
+    t("rating.trendAria", {
+      from: fideRatingDateLabel(points[0].date, { long: true }),
+      to: fideRatingDateLabel(points.at(-1).date, { long: true }),
+      series: activeSeries.map((item) => {
         const first = item.values[0].value;
         const last = item.values.at(-1).value;
         const delta = last - first;
-        return `${item.name}: ${first} a ${last}, ${delta > 0 ? "+" : ""}${delta} puntos`;
+        return t("rating.seriesAria", { name: item.name, first, last, delta: `${delta > 0 ? "+" : ""}${delta}` });
       }).join(". "),
+    }),
   );
   container.hidden = false;
 }
@@ -212,7 +222,7 @@ function readInfo64Date(id, label) {
   if (!parsed) {
     field.setAttribute("aria-invalid", "true");
     field.focus();
-    toast(`Fecha ${label.toLowerCase()} no válida`, "Usa el formato dd/mm/aaaa; por ejemplo, 02/08/2026.", "error");
+    toast(t("date.invalidTitle", { label: label.toLocaleLowerCase(currentLocale()) }), t("date.invalidMessage"), "error");
     return undefined;
   }
   field.removeAttribute("aria-invalid");
@@ -243,27 +253,29 @@ function setInfo64Period(period) {
 }
 
 function shortRange(range) {
-  if (!range?.from || !range?.to) return "Sin fechas";
-  const formatter = new Intl.DateTimeFormat("es-ES", { month: "short", year: "numeric" });
+  if (!range?.from || !range?.to) return t("date.none");
+  const formatter = new Intl.DateTimeFormat(currentLocale(), { month: "short", year: "numeric" });
   const from = formatter.format(new Date(`${range.from}T12:00:00`));
   const to = formatter.format(new Date(`${range.to}T12:00:00`));
   return from === to ? from : `${from} — ${to}`;
 }
 
 function sourceLabel(source) {
-  return ({ lichess: "Lichess", "chess.com": "Chess.com", combined: "Fuentes combinadas", fide: "FIDE OTB", pgn_import: "PGN importado", demo: "Muestra", upload: "PGN importado" })[source] || source;
+  return ({ lichess: "Lichess", "chess.com": "Chess.com", combined: t("source.combined"), fide: t("source.fide"), pgn_import: t("source.pgn"), demo: t("source.demo"), upload: t("source.pgn") })[source] || source;
 }
 
 function paceLabel(pace) {
-  return ({ global: "Global", blitz: "Blitz", rapid: "Rápida", classical: "Lenta", bullet: "Bullet" })[pace] || "Sin clasificar";
+  return ({ global: t("pace.global"), blitz: t("pace.blitz"), rapid: t("pace.rapid"), classical: t("pace.classical"), bullet: t("pace.bullet") })[pace] || t("pace.unknown");
 }
 
 function countryLabel(country) {
-  return ({ HU: "Hungría", ES: "España", US: "Estados Unidos", FR: "Francia", DE: "Alemania", GB: "Reino Unido" })[country] || country || "Fuente pública";
+  if (!country) return t("country.public");
+  try { return new Intl.DisplayNames([currentLocale()], { type: "region" }).of(country) || country; }
+  catch { return country; }
 }
 
 function initials(name) {
-  return String(name || "Jugador").split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+  return String(name || t("player.default")).split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 }
 
 function outcome(game) {
@@ -274,7 +286,7 @@ function outcome(game) {
 }
 
 function outcomeLabel(value) {
-  return ({ win: "Victoria", draw: "Tablas", loss: "Derrota" })[value] || "Sin resultado";
+  return ({ win: t("outcome.win"), draw: t("outcome.draw"), loss: t("outcome.loss") })[value] || t("outcome.none");
 }
 
 async function api(path, options = {}) {
@@ -313,7 +325,7 @@ function stopLoaderPieces() {
   loaderTimer = null;
 }
 
-function setLoading(visible, text = "Preparando el tablero…") {
+function setLoading(visible, text = t("loading.default")) {
   $("#loading-text").textContent = text;
   $("#loading-layer").hidden = !visible;
   if (visible) startLoaderPieces();
@@ -335,7 +347,7 @@ function toast(title, message = "", type = "success", { persistent = false } = {
     const close = document.createElement("button");
     close.className = "toast-close";
     close.type = "button";
-    close.setAttribute("aria-label", "Cerrar aviso");
+    close.setAttribute("aria-label", t("common.noticeClose"));
     close.textContent = "×";
     close.addEventListener("click", () => node.remove());
     node.append(close);
@@ -362,7 +374,7 @@ function renderMiniBoard() {
 }
 
 async function loadPlayer(player, { scroll = false } = {}) {
-  setLoading(true, "Calculando el dossier del rival…");
+  setLoading(true, t("loading.calculatingDossier"));
   try {
     const [detail, stats, games] = await Promise.all([
       api(`/players/${encodeURIComponent(player.source)}/${encodeURIComponent(player.external_id)}`),
@@ -379,7 +391,7 @@ async function loadPlayer(player, { scroll = false } = {}) {
     renderAll();
     if (scroll) $("#analisis").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
-    toast("No se pudo cargar el análisis", error.message, "error");
+    toast(t("toast.loadError"), error.message, "error");
     throw error;
   } finally {
     setLoading(false);
@@ -391,13 +403,13 @@ async function loadDemo(scroll = true) {
     const demo = await api("/demo");
     await loadPlayer(demo.player, { scroll });
     toast(
-      "Ejemplo ficticio cargado",
-      "Estas partidas se crearon para probar la interfaz y los cálculos; no pertenecen a una persona real.",
+      t("toast.demoLoaded"),
+      t("toast.demoMessage"),
       "warning",
       { persistent: true },
     );
   } catch (error) {
-    toast("La muestra no está disponible", error.message, "error");
+    toast(t("toast.demoUnavailable"), error.message, "error");
   }
 }
 
@@ -405,16 +417,16 @@ async function searchPlayer(event) {
   event.preventDefault();
   const query = $("#player-query").value.trim();
   if (query.length < 2) {
-    toast("Escribe un usuario", "Usa el nombre exacto de la cuenta en la plataforma elegida.", "error");
+    toast(t("toast.enterUser"), t("toast.enterUserMessage"), "error");
     return;
   }
   const selectedSource = state.source;
-  const providerName = selectedSource === "all" ? "Lichess y Chess.com" : sourceLabel(selectedSource);
-  setLoading(true, `Buscando al jugador en ${providerName}…`);
+  const providerName = selectedSource === "all" ? "Lichess + Chess.com" : sourceLabel(selectedSource);
+  setLoading(true, t("loading.searchingPlayer", { provider: providerName }));
   try {
     let player;
     if (selectedSource === "all") {
-      setLoading(true, "Combinando sus partidas de las dos plataformas…");
+      setLoading(true, t("loading.combiningPlatforms"));
       const combined = await api("/players/combined?max_games=100", {
         method: "POST",
         body: JSON.stringify({ lichess_username: query, chesscom_username: query }),
@@ -422,7 +434,7 @@ async function searchPlayer(event) {
       player = combined.dataset.player;
       if (combined.warnings.length) {
         toast(
-          "Dossier creado con avisos",
+          t("toast.dossierWarnings"),
           combined.warnings.join(" "),
           "warning",
           { persistent: true },
@@ -430,16 +442,16 @@ async function searchPlayer(event) {
       }
     } else {
       const search = await api(`/players/search?q=${encodeURIComponent(query)}&source=${encodeURIComponent(selectedSource)}`);
-      if (!search.results.length) throw new Error(search.message || "No encontramos ese usuario exacto.");
+      if (!search.results.length) throw new Error(search.message || t("toast.userNotFound"));
       player = search.results.find((item) => item.source === selectedSource) || search.results[0];
-      setLoading(true, `Recopilando sus partidas de ${sourceLabel(player.source)}…`);
+      setLoading(true, t("loading.collectingGames", { source: sourceLabel(player.source) }));
       await api(`/players/${encodeURIComponent(player.source)}/${encodeURIComponent(player.external_id)}/refresh-games?max_games=100`, { method: "POST" });
     }
     await loadPlayer(player, { scroll: true });
-    toast("Dossier actualizado", `${player.display_name}: ${state.games.length} partidas disponibles.`);
+    toast(t("toast.updated"), t("toast.availableGames", { player: player.display_name, count: state.games.length }));
   } catch (error) {
     setLoading(false);
-    toast("No se pudo completar la búsqueda", error.message, "error");
+    toast(t("toast.searchError"), error.message, "error");
   }
 }
 
@@ -459,7 +471,7 @@ async function submitHeroOtbSearch(event) {
   event.preventDefault();
   const fideId = $('#hero-fide-id').value.trim();
   if (!/^\d{5,10}$/.test(fideId)) {
-    toast('ID FIDE no válido', 'Escribe entre 5 y 10 cifras.', 'error');
+    toast(t("toast.invalidFide"), t("toast.invalidFideMessage"), "error");
     $('#hero-fide-id').focus();
     return;
   }
@@ -473,7 +485,7 @@ async function switchPace(pace) {
   if (!state.player || state.pace === pace) return;
   state.pace = pace;
   $$("[data-pace]").forEach((button) => button.classList.toggle("active", button.dataset.pace === pace));
-  setLoading(true, `Filtrando ritmo ${paceLabel(pace).toLowerCase()}…`);
+  setLoading(true, t("loading.filteringPace", { pace: paceLabel(pace).toLocaleLowerCase(currentLocale()) }));
   try {
     const base = `/players/${encodeURIComponent(state.player.source)}/${encodeURIComponent(state.player.external_id)}`;
     const [stats, games] = await Promise.all([
@@ -485,7 +497,7 @@ async function switchPace(pace) {
     state.openingFilter = null;
     renderAll();
   } catch (error) {
-    toast("No se pudo aplicar el ritmo", error.message, "error");
+    toast(t("toast.paceError"), error.message, "error");
   } finally { setLoading(false); }
 }
 
@@ -504,9 +516,9 @@ function renderPlayer() {
   $("#player-name").textContent = player.display_name;
   $("#player-title").textContent = player.title || "PLAY";
   $("#player-meta").textContent = [player.rating, countryLabel(player.country), sourceLabel(player.source)].filter(Boolean).join(" · ");
-  $("#trace-sample").textContent = `${stats.sample_size} ${stats.sample_size === 1 ? "partida" : "partidas"}`;
+  $("#trace-sample").textContent = `${stats.sample_size} ${countLabel(stats.sample_size)}`;
   $("#trace-range").textContent = shortRange(stats.date_range);
-  $("#trace-sources").textContent = stats.sources.map(sourceLabel).join(" + ") || "Sin fuentes";
+  $("#trace-sources").textContent = stats.sources.map(sourceLabel).join(" + ") || t("source.none");
   $("#refresh-player").hidden = !["lichess", "chess.com"].includes(player.source);
 }
 
@@ -514,7 +526,7 @@ function renderMetrics() {
   const stats = state.stats;
   const overall = stats.overall;
   $("#metric-score").innerHTML = `${formatNumber(overall.score_pct)}<small>%</small>`;
-  $("#metric-record").textContent = `${overall.wins} victorias · ${overall.draws} tablas · ${overall.losses} derrotas`;
+  $("#metric-record").textContent = `${overall.wins} ${t("record.wins")} · ${overall.draws} ${t("record.draws")} · ${overall.losses} ${t("record.losses")}`;
   $("#metric-score-bar").style.width = `${overall.score_pct}%`;
   const white = stats.by_color.find((row) => row.color === "white") || {};
   const black = stats.by_color.find((row) => row.color === "black") || {};
@@ -522,31 +534,31 @@ function renderMetrics() {
   renderColorMetric("black", black);
   const dots = $("#form-dots");
   dots.innerHTML = stats.recent_form.map((result) => {
-    const letter = ({ win: "V", draw: "T", loss: "D" })[result.outcome] || "–";
-    return `<span class="form-dot ${result.outcome}" title="${outcomeLabel(result.outcome)} ante ${escapeHtml(result.opponent)}">${letter}</span>`;
+    const letter = ({ win: t("record.winShort"), draw: t("record.drawShort"), loss: t("record.lossShort") })[result.outcome] || "–";
+    return `<span class="form-dot ${result.outcome}" title="${outcomeLabel(result.outcome)} ${t("dynamic.against")} ${escapeHtml(result.opponent)}">${letter}</span>`;
   }).join("");
-  $("#recent-label").textContent = `Últimas ${stats.recent_form.length} partidas`;
+  $("#recent-label").textContent = t("dynamic.lastGames", { count: stats.recent_form.length });
   $("#metric-date").textContent = shortRange(stats.date_range);
 }
 
 function renderColorMetric(color, record) {
   $(`#metric-${color}`).innerHTML = `${formatNumber(record.score_pct || 0)}<small>%</small>`;
-  $(`#metric-${color}-record`).textContent = `n = ${record.games || 0} ${(record.games || 0) === 1 ? "partida" : "partidas"}`;
-  $(`#metric-${color}-form`).textContent = `${record.wins || 0}V · ${record.draws || 0}T · ${record.losses || 0}D`;
+  $(`#metric-${color}-record`).textContent = `n = ${record.games || 0} ${countLabel(record.games || 0)}`;
+  $(`#metric-${color}-form`).textContent = `${record.wins || 0}${t("record.winShort")} · ${record.draws || 0}${t("record.drawShort")} · ${record.losses || 0}${t("record.lossShort")}`;
 }
 
 function renderOpenings() {
   const rows = state.stats.openings.filter((item) => state.openingColor === "all" || item.color === state.openingColor);
   const visibleRows = rows.slice(0, 8);
   $("#openings-body").innerHTML = visibleRows.map((item, index) => `
-    <tr data-opening-index="${index}" tabindex="0" aria-label="Filtrar partidas por ${escapeHtml(item.opening)}">
-      <td class="opening-cell"><strong>${escapeHtml(item.opening)}</strong><span>${escapeHtml(item.eco || "—")} · ${formatNumber(item.share_pct)}% de la muestra</span></td>
-      <td><span class="color-pill ${item.color}"><i></i>${item.color === "white" ? "Blancas" : "Negras"}</span></td>
+    <tr data-opening-index="${index}" tabindex="0" aria-label="${escapeHtml(t("dynamic.filterOpeningAria", { opening: item.opening }))}">
+      <td class="opening-cell"><strong>${escapeHtml(item.opening)}</strong><span>${escapeHtml(item.eco || "—")} · ${t("openings.share", { share: formatNumber(item.share_pct) })}</span></td>
+      <td><span class="color-pill ${item.color}"><i></i>${item.color === "white" ? t("filter.white") : t("filter.black")}</span></td>
       <td><strong>${item.games}</strong></td>
       <td class="score-cell">${formatNumber(item.score_pct)}%</td>
       <td class="row-arrow">→</td>
     </tr>
-  `).join("") || `<tr><td colspan="5">No hay aperturas para este color.</td></tr>`;
+  `).join("") || `<tr><td colspan="5">${escapeHtml(t("openings.none"))}</td></tr>`;
   $$("#openings-body tr[data-opening-index]").forEach((row) => {
     const opening = visibleRows[Number(row.dataset.openingIndex)];
     const select = () => selectOpening(opening);
@@ -558,14 +570,14 @@ function renderOpenings() {
 function renderColors() {
   $("#color-breakdown").innerHTML = state.stats.by_color.map((row) => `
     <div class="color-row">
-      <div class="color-row-head"><strong>${row.color === "white" ? "Con blancas" : "Con negras"}</strong><span>n = ${row.games} · score ${formatNumber(row.score_pct)}%</span></div>
-      <div class="wdl-bar" aria-label="${row.win_pct}% victorias, ${row.draw_pct}% tablas, ${row.loss_pct}% derrotas">
+      <div class="color-row-head"><strong>${row.color === "white" ? t("metrics.white") : t("metrics.black")}</strong><span>n = ${row.games} · ${t("openings.score").toLocaleLowerCase(currentLocale())} ${formatNumber(row.score_pct)}%</span></div>
+      <div class="wdl-bar" aria-label="${row.win_pct}% ${t("record.wins")}, ${row.draw_pct}% ${t("record.draws")}, ${row.loss_pct}% ${t("record.losses")}">
         <i class="win" style="width:${row.win_pct}%"></i><i class="draw" style="width:${row.draw_pct}%"></i><i class="loss" style="width:${row.loss_pct}%"></i>
       </div>
-      <div class="wdl-numbers"><span>${row.wins}V</span><span>${row.draws}T</span><span>${row.losses}D</span></div>
+      <div class="wdl-numbers"><span>${row.wins}${t("record.winShort")}</span><span>${row.draws}${t("record.drawShort")}</span><span>${row.losses}${t("record.lossShort")}</span></div>
     </div>
   `).join("");
-  $("#sample-note").querySelector("p").innerHTML = `<strong>${state.stats.sample_size} partidas · ritmo ${paceLabel(state.pace).toLowerCase()}</strong> ${escapeHtml(shortRange(state.stats.date_range))}. ${state.stats.sources.map((source) => escapeHtml(sourceLabel(source))).join(" + ")}.`;
+  $("#sample-note").querySelector("p").innerHTML = `<strong>${escapeHtml(t("dynamic.samplePace", { count: state.stats.sample_size, pace: paceLabel(state.pace).toLocaleLowerCase(currentLocale()) }))}</strong> ${escapeHtml(shortRange(state.stats.date_range))}. ${state.stats.sources.map((source) => escapeHtml(sourceLabel(source))).join(" + ")}.`;
 }
 
 function selectedGames() {
@@ -589,32 +601,32 @@ function selectedGames() {
 
 function renderGames() {
   const games = selectedGames();
-  $("#games-count").textContent = `${games.length} ${games.length === 1 ? "partida encontrada" : "partidas encontradas"}`;
+  $("#games-count").textContent = `${games.length} ${t(games.length === 1 ? "count.foundOne" : "count.foundMany")}`;
   $("#games-list").hidden = games.length === 0;
   $("#games-empty").hidden = games.length > 0;
   $("#games-list").innerHTML = games.map((game) => {
     const result = outcome(game);
-    const resultLetter = ({ win: "V", draw: "T", loss: "D" })[result] || "–";
+    const resultLetter = ({ win: t("record.winShort"), draw: t("record.drawShort"), loss: t("record.lossShort") })[result] || "–";
     const opponent = game.player_color === "white" ? game.black : game.white;
     const opponentElo = game.player_color === "white" ? game.black_elo : game.white_elo;
     return `
       <article class="game-row">
         <div class="game-players">
           <span class="game-result ${result}" title="${outcomeLabel(result)}" aria-label="${outcomeLabel(result)}"><b aria-hidden="true">${resultLetter}</b></span>
-          <div><strong>${escapeHtml(opponent)}</strong><span class="game-player-meta"><i class="game-color-icon ${game.player_color}" aria-hidden="true"></i>${game.player_color === "white" ? "Blancas" : "Negras"}${opponentElo ? ` · Rival ${opponentElo}` : ""} · ${escapeHtml(game.result)}</span></div>
+          <div><strong>${escapeHtml(opponent)}</strong><span class="game-player-meta"><i class="game-color-icon ${game.player_color}" aria-hidden="true"></i>${game.player_color === "white" ? t("filter.white") : t("filter.black")}${opponentElo ? ` · ${t("game.opponent")} ${opponentElo}` : ""} · ${escapeHtml(game.result)}</span></div>
         </div>
-        <div class="game-detail game-opening"><span>Apertura</span><strong>${escapeHtml(game.eco || "—")} · ${escapeHtml(game.opening)}</strong></div>
-        <div class="game-detail game-event"><span>Evento</span><strong>${escapeHtml(game.event || "Partida importada")}</strong></div>
-        <div class="game-detail game-mode"><span>Ritmo</span><strong>${paceLabel(game.time_class)} · ${shortDate(game.date)}</strong></div>
-        <button class="game-open" type="button" data-game-source="${escapeHtml(game.source)}" data-game-id="${escapeHtml(game.id)}" aria-label="Abrir partida contra ${escapeHtml(opponent)}">→</button>
+        <div class="game-detail game-opening"><span>${t("game.opening")}</span><strong>${escapeHtml(game.eco || "—")} · ${escapeHtml(game.opening)}</strong></div>
+        <div class="game-detail game-event"><span>${t("game.event")}</span><strong>${escapeHtml(game.event || t("game.imported"))}</strong></div>
+        <div class="game-detail game-mode"><span>${t("game.pace")}</span><strong>${paceLabel(game.time_class)} · ${shortDate(game.date)}</strong></div>
+        <button class="game-open" type="button" data-game-source="${escapeHtml(game.source)}" data-game-id="${escapeHtml(game.id)}" aria-label="${escapeHtml(t("dynamic.openGameAria", { opponent }))}">→</button>
       </article>`;
   }).join("");
   $$(".game-open").forEach((button) => button.addEventListener("click", () => openGame(button.dataset.gameSource, button.dataset.gameId)));
   const active = $("#active-filter");
   active.hidden = !state.openingFilter;
   if (state.openingFilter) {
-    const filterLabel = `${state.openingFilter.eco || "Sin ECO"} · ${state.openingFilter.opening}`;
-    active.innerHTML = `Apertura activa: <strong>${escapeHtml(filterLabel)}</strong><button type="button" aria-label="Quitar filtro de apertura">× Quitar</button>`;
+    const filterLabel = `${state.openingFilter.eco || t("game.noEco")} · ${state.openingFilter.opening}`;
+    active.innerHTML = t("dynamic.activeOpening", { opening: escapeHtml(filterLabel), removeAria: t("dynamic.removeOpening"), remove: t("pgn.remove") });
   }
   active.querySelector("button")?.addEventListener("click", () => { state.openingFilter = null; renderGames(); });
 }
@@ -627,8 +639,8 @@ function selectOpening(opening) {
   };
   renderGames();
   $("#partidas").scrollIntoView({ behavior: "smooth", block: "start" });
-  const ecoLabel = opening.eco || "sin código ECO";
-  toast("Filtro aplicado", `Mostrando ${opening.games} partidas de ${ecoLabel}.`);
+  const ecoLabel = opening.eco || t("game.withoutEco");
+  toast(t("toast.filterApplied"), t("toast.showingOpening", { count: opening.games, opening: ecoLabel }));
 }
 
 async function refreshCurrentPlayer() {
@@ -638,8 +650,8 @@ async function refreshCurrentPlayer() {
   try {
     await api(`/players/${encodeURIComponent(state.player.source)}/${encodeURIComponent(state.player.external_id)}/refresh-games?max_games=100`, { method: "POST" });
     await loadPlayer(state.player);
-    toast("Partidas actualizadas", "El dossier se ha recalculado con la fuente pública.");
-  } catch (error) { toast("No se pudo actualizar", error.message, "error"); }
+    toast(t("toast.gamesUpdated"), t("toast.gamesUpdatedMessage"));
+  } catch (error) { toast(t("toast.updateError"), error.message, "error"); }
   finally { button.classList.remove("spinning"); }
 }
 
@@ -657,7 +669,7 @@ function parseFen(fen) {
 }
 
 async function openGame(source, gameId) {
-  setLoading(true, "Colocando las piezas…");
+  setLoading(true, t("loading.placingPieces"));
   try {
     resetViewerAnalysis({ keepToggle: false });
     state.viewerGame = await api(`/games/${encodeURIComponent(source)}/${encodeURIComponent(gameId)}`);
@@ -667,7 +679,7 @@ async function openGame(source, gameId) {
     renderBoard();
     renderAnalysisUi();
     openDialog("viewer-dialog");
-  } catch (error) { toast("No se pudo abrir la partida", error.message, "error"); }
+  } catch (error) { toast(t("toast.openError"), error.message, "error"); }
   finally { setLoading(false); }
 }
 
@@ -700,18 +712,18 @@ function renderViewerMeta() {
   }
   const source = $("#viewer-source");
   const sourceHeading = document.createElement("strong");
-  sourceHeading.textContent = `Fuente: ${sourceLabel(game.source)}`;
+  sourceHeading.textContent = t("dynamic.source", { source: sourceLabel(game.source) });
   source.replaceChildren(
     sourceHeading,
     document.createElement("br"),
-    document.createTextNode(`${game.event || "Evento sin especificar"} · ${game.site || "sin enlace externo"} · confianza ${game.source_confidence}.`),
+    document.createTextNode(`${game.event || t("game.unspecifiedEvent")} · ${game.site || t("game.noExternalLink")} · ${t("game.confidence")} ${game.source_confidence}.`),
   );
 }
 
 function moveGlyphHtml(ply) {
   const item = state.analysis?.plies?.[ply - 1];
   if (!item?.glyph) return "";
-  return `<span class="move-glyph ${escapeHtml(item.judgment)}" title="${escapeHtml(item.label)} (${item.cpl} cp)">${escapeHtml(item.glyph)}</span>`;
+  return `<span class="move-glyph ${escapeHtml(item.judgment)}" title="${escapeHtml(t(`quality.${item.judgment}`))} (${item.cpl} cp)">${escapeHtml(item.glyph)}</span>`;
 }
 
 function renderMoves() {
@@ -773,9 +785,9 @@ function renderBoard() {
   }
   $("#move-count").textContent = `${state.ply} / ${game.moves.length}`;
   if (explore.active) {
-    $("#move-label").textContent = "Modo explorar";
+    $("#move-label").textContent = t("dynamic.exploreMode");
   } else {
-    $("#move-label").textContent = state.ply ? `Después de ${game.moves[state.ply - 1]}` : "Posición inicial";
+    $("#move-label").textContent = state.ply ? t("dynamic.afterMove", { move: game.moves[state.ply - 1] }) : t("viewer.initial");
   }
   renderBoardArrow();
   renderEvalBar();
@@ -877,18 +889,18 @@ function renderAnalysisStatus() {
   }
   const analysis = state.analysis;
   if (!analysis) {
-    el.textContent = "Preparando motor…";
+    el.textContent = t("dynamic.enginePreparing");
     return;
   }
   if (analysis.status === "error") {
-    el.textContent = analysis.error || "Error del motor";
+    el.textContent = analysis.error || t("dynamic.engineError");
     return;
   }
   if (analysis.status === "complete") {
-    el.textContent = `Listo · d${state.engineDepth} · ${state.engineLines} línea${state.engineLines === 1 ? "" : "s"}`;
+    el.textContent = t("dynamic.engineReady", { depth: state.engineDepth, count: state.engineLines, lines: t(state.engineLines === 1 ? "dynamic.line" : "dynamic.lines") });
     return;
   }
-  el.textContent = `Analizando ${analysis.done}/${analysis.total} · d${state.engineDepth}…`;
+  el.textContent = t("dynamic.engineAnalysing", { done: analysis.done, total: analysis.total, depth: state.engineDepth });
 }
 
 function currentPlyEval() {
@@ -915,27 +927,27 @@ function renderAnalysisSummary() {
   const evalText = MoveQuality.formatEval(score);
   const judgment = currentMoveJudgment();
   const accuracyParts = [];
-  if (state.analysis?.whiteAccuracy != null) accuracyParts.push(`Blancas ${formatNumber(state.analysis.whiteAccuracy)}%`);
-  if (state.analysis?.blackAccuracy != null) accuracyParts.push(`Negras ${formatNumber(state.analysis.blackAccuracy)}%`);
+  if (state.analysis?.whiteAccuracy != null) accuracyParts.push(`${t("filter.white")} ${formatNumber(state.analysis.whiteAccuracy)}%`);
+  if (state.analysis?.blackAccuracy != null) accuracyParts.push(`${t("filter.black")} ${formatNumber(state.analysis.blackAccuracy)}%`);
 
-  let moveLine = "Posición inicial";
+  let moveLine = t("viewer.initial");
   if (explore.active) {
-    if (explore.lastTry?.status === "analyzing") moveLine = "Evaluando tu jugada…";
+    if (explore.lastTry?.status === "analyzing") moveLine = t("analysis.evaluatingMove");
     else if (explore.lastTry?.status === "done") {
-      moveLine = `Tu jugada <strong>${escapeHtml(explore.lastTry.san)}</strong>${explore.lastTry.glyph ? ` <span class="judgment ${escapeHtml(explore.lastTry.judgment)}">${escapeHtml(explore.lastTry.glyph)}</span>` : ""} · Óptima <strong>${escapeHtml(explore.lastTry.bestSan || "—")}</strong> · Δ ${explore.lastTry.cpl} cp · <span class="judgment ${escapeHtml(explore.lastTry.judgment)}">${escapeHtml(explore.lastTry.label)}</span>`;
+      moveLine = `${t("analysis.yourMove")} <strong>${escapeHtml(explore.lastTry.san)}</strong>${explore.lastTry.glyph ? ` <span class="judgment ${escapeHtml(explore.lastTry.judgment)}">${escapeHtml(explore.lastTry.glyph)}</span>` : ""} · ${t("quality.best")} <strong>${escapeHtml(explore.lastTry.bestSan || "—")}</strong> · Δ ${explore.lastTry.cpl} cp · <span class="judgment ${escapeHtml(explore.lastTry.judgment)}">${escapeHtml(t(`quality.${explore.lastTry.judgment}`))}</span>`;
     } else if (explore.lastTry?.status === "error") {
-      moveLine = escapeHtml(explore.lastTry.error || "No se pudo evaluar");
+      moveLine = escapeHtml(explore.lastTry.error || t("analysis.evaluateError"));
     } else {
-      moveLine = "Elige una pieza y una casilla destino";
+      moveLine = t("analysis.chooseMove");
     }
   } else if (judgment) {
-    moveLine = `Jugada <strong>${escapeHtml(judgment.san)}</strong>${judgment.glyph ? ` <span class="judgment ${escapeHtml(judgment.judgment)}">${escapeHtml(judgment.glyph)}</span>` : ""} · Óptima <strong>${escapeHtml(judgment.bestSan || "—")}</strong> · Δ ${judgment.cpl} cp · <span class="judgment ${escapeHtml(judgment.judgment)}">${escapeHtml(judgment.label)}</span>`;
+    moveLine = `${t("analysis.move")} <strong>${escapeHtml(judgment.san)}</strong>${judgment.glyph ? ` <span class="judgment ${escapeHtml(judgment.judgment)}">${escapeHtml(judgment.glyph)}</span>` : ""} · ${t("quality.best")} <strong>${escapeHtml(judgment.bestSan || "—")}</strong> · Δ ${judgment.cpl} cp · <span class="judgment ${escapeHtml(judgment.judgment)}">${escapeHtml(t(`quality.${judgment.judgment}`))}</span>`;
   } else if (state.ply > 0 && state.analysis && state.analysis.done < state.ply) {
-    moveLine = "Esta jugada aún se está analizando…";
+    moveLine = t("analysis.pendingMove");
   }
 
   el.innerHTML = [
-    `<div><strong>Eval</strong> ${escapeHtml(evalText)}${accuracyParts.length ? ` · Precisión ${accuracyParts.join(" · ")}` : ""}</div>`,
+    `<div><strong>${t("analysis.eval")}</strong> ${escapeHtml(evalText)}${accuracyParts.length ? ` · ${t("analysis.accuracy")} ${accuracyParts.join(" · ")}` : ""}</div>`,
     `<div>${moveLine}</div>`,
   ].join("");
 }
@@ -948,7 +960,7 @@ function renderKeyMoments() {
     return;
   }
   el.innerHTML = state.analysis.keyMoments.map((moment) => (
-    `<button type="button" class="key-moment ${escapeHtml(moment.judgment)}" data-ply="${moment.ply}" title="${escapeHtml(moment.reason)}">` +
+    `<button type="button" class="key-moment ${escapeHtml(moment.judgment)}" data-ply="${moment.ply}" title="${escapeHtml(t(`quality.${moment.judgment}`))}">` +
     `<span class="glyph">${escapeHtml(moment.glyph || "")}</span>${escapeHtml(moment.san)}` +
     `</button>`
   )).join("");
@@ -991,7 +1003,7 @@ function renderLiveLines() {
     return;
   }
   if (!state.liveLines.length) {
-    el.innerHTML = `<div class="analysis-line-empty">Calculando ${state.engineLines} línea${state.engineLines === 1 ? "" : "s"} a profundidad ${state.engineDepth}…</div>`;
+    el.innerHTML = `<div class="analysis-line-empty">${escapeHtml(t("dynamic.calculatingLines", { count: state.engineLines, lines: t(state.engineLines === 1 ? "dynamic.line" : "dynamic.lines"), depth: state.engineDepth }))}</div>`;
     return;
   }
   const side = (explore.active ? explore.fen() : state.viewerGame?.fens[state.ply] || "").split(" ")[1] || "w";
@@ -1050,7 +1062,7 @@ async function probeLiveLines() {
     if (probeId !== state.liveProbeId) return;
     if (error.message === "Análisis cancelado" || error.message === "Motor detenido") return;
     const el = $("#analysis-lines-list");
-    if (el) el.innerHTML = `<div class="analysis-line-empty">${escapeHtml(error.message || "No se pudieron calcular las líneas")}</div>`;
+    if (el) el.innerHTML = `<div class="analysis-line-empty">${escapeHtml(error.message || t("dynamic.linesError"))}</div>`;
   }
 }
 
@@ -1185,7 +1197,7 @@ async function setAnalysisEnabled(enabled) {
         renderBoardArrow();
         renderMoves();
         if (analysis.status === "error") {
-          toast("No se pudo analizar la partida", analysis.error || "Error del motor", "error");
+          toast(t("toast.analysisError"), analysis.error || t("dynamic.engineError"), "error");
         }
       },
     });
@@ -1194,7 +1206,7 @@ async function setAnalysisEnabled(enabled) {
     state.analysisEnabled = false;
     $("#analysis-toggle").checked = false;
     renderAnalysisUi();
-    toast("Motor no disponible", error.message || String(error), "error");
+    toast(t("toast.engineUnavailable"), error.message || String(error), "error");
   }
 }
 
@@ -1239,19 +1251,19 @@ function renderExploreBar() {
   if (!bar || !feedback || !undo || !toggle) return;
   bar.hidden = !explore.active;
   toggle.classList.toggle("active", explore.active);
-  toggle.textContent = explore.active ? "Explorando" : "Explorar";
+  toggle.textContent = explore.active ? t("dynamic.exploring") : t("viewer.explore");
   undo.disabled = !explore.canUndo();
   if (!explore.active) {
     feedback.textContent = "";
     return;
   }
-  if (explore.lastTry?.status === "analyzing") feedback.innerHTML = "Evaluando…";
+  if (explore.lastTry?.status === "analyzing") feedback.innerHTML = t("dynamic.evaluating");
   else if (explore.lastTry?.status === "done") {
-    feedback.innerHTML = `<strong>${escapeHtml(explore.lastTry.san)}</strong> ${escapeHtml(explore.lastTry.label)} · óptima <strong>${escapeHtml(explore.lastTry.bestSan || "—")}</strong>`;
+    feedback.innerHTML = `<strong>${escapeHtml(explore.lastTry.san)}</strong> ${escapeHtml(t(`quality.${explore.lastTry.judgment}`))} · ${t("dynamic.optimal")} <strong>${escapeHtml(explore.lastTry.bestSan || "—")}</strong>`;
   } else if (explore.lastTry?.status === "error") {
-    feedback.textContent = explore.lastTry.error || "Error";
+    feedback.textContent = explore.lastTry.error || t("dynamic.engineError");
   } else {
-    feedback.textContent = "Haz clic en una pieza y luego en su destino";
+    feedback.textContent = t("dynamic.clickPiece");
   }
 }
 
@@ -1275,7 +1287,7 @@ async function enterExploreMode() {
     renderAnalysisSummary();
     renderLiveLines();
   } catch (error) {
-    toast("No se pudo abrir el modo explorar", error.message || String(error), "error");
+    toast(t("toast.exploreError"), error.message || String(error), "error");
   }
 }
 
@@ -1321,23 +1333,23 @@ async function readPgnFile(file) {
     ["application/x-chess-pgn", "text/plain"].includes(file.type);
   if (!compatible) {
     clearPgnFile();
-    toast("Archivo no compatible", "Selecciona un archivo PGN con extensión .pgn o .txt.", "error");
+    toast(t("toast.fileType"), t("toast.fileTypeMessage"), "error");
     return;
   }
   if (file.size > MAX_PGN_BYTES) {
     clearPgnFile();
-    toast("Archivo demasiado grande", "El PGN no puede superar los 5 MB.", "error");
+    toast(t("toast.fileSize"), t("toast.fileSizeMessage"), "error");
     return;
   }
   const contents = await file.text();
   if (contents.trim().length < 8) {
     clearPgnFile();
-    toast("PGN vacío", "El archivo no contiene una partida PGN.", "error");
+    toast(t("toast.emptyPgn"), t("toast.emptyPgnMessage"), "error");
     return;
   }
   state.pgnText = contents;
   $("#selected-file").hidden = false;
-  $("#selected-file-label").textContent = `✓ ${file.name} · ${(file.size / 1024).toLocaleString("es-ES", { maximumFractionDigits: 1 })} KB`;
+  $("#selected-file-label").textContent = `✓ ${file.name} · ${(file.size / 1024).toLocaleString(currentLocale(), { maximumFractionDigits: 1 })} KB`;
   updateImportReady();
 }
 
@@ -1355,11 +1367,11 @@ function updateImportReady() {
   const status = $("#pgn-import-status");
   button.disabled = !hasPgn;
   if (hasPgn) {
-    status.textContent = "Listo para procesar como un dossier independiente.";
+    status.textContent = t("pgn.readyStatus");
   } else {
-    status.textContent = "Selecciona un archivo para crear un dossier independiente.";
+    status.textContent = t("pgn.selectStatus");
   }
-  button.title = hasPgn ? "Procesar el PGN seleccionado" : status.textContent;
+  button.title = hasPgn ? t("pgn.processTitle") : status.textContent;
 }
 
 function safeInfo64Url(value, fallback = "https://info64.org/search-player") {
@@ -1439,23 +1451,23 @@ function renderInfo64Results(payload) {
   const opponentQuery = $("#info64-opponent-filter").value.trim();
   const filterLabels = [];
   if (opponentFilter !== "all") {
-    filterLabels.push(({ federated: "federados", "non-federated": "no federados" })[opponentFilter]);
+    filterLabels.push(({ federated: t("otb.federated").toLocaleLowerCase(currentLocale()), "non-federated": t("otb.nonFederated").toLocaleLowerCase(currentLocale()) })[opponentFilter]);
   }
-  if (opponentQuery) filterLabels.push(`que coinciden con “${opponentQuery}”`);
-  const filterDescription = filterLabels.length ? ` con el filtro ${filterLabels.join(" y ")}` : "";
+  if (opponentQuery) filterLabels.push(t("info64.matchesQuery", { query: opponentQuery }));
+  const filterDescription = filterLabels.length ? t("info64.filterDescription", { filters: filterLabels.join(` ${t("info64.and")} `) }) : "";
   state.info64Results = payload;
   $("#info64-results").hidden = false;
   $("#info64-source-link").href = safeInfo64Url(payload.source_url);
   $("#info64-summary").innerHTML = [
-    ["Resultados", summary.games],
-    ["Puntuación", `${formatNumber(summary.score_percentage)}%`],
-    ["Victorias", summary.wins],
-    ["Tablas", summary.draws],
-    ["Derrotas", summary.losses],
+    [t("info64.resultsLabel"), summary.games],
+    [t("info64.scoreLabel"), `${formatNumber(summary.score_percentage)}%`],
+    [t("record.wins"), summary.wins],
+    [t("record.draws"), summary.draws],
+    [t("record.losses"), summary.losses],
   ].map(([label, value]) => `<div><strong>${escapeHtml(value)}</strong><span>${escapeHtml(label)}</span></div>`).join("");
   $("#info64-match-note").textContent = payload.tournaments_scanned
-    ? `${payload.tournaments_matched} de ${payload.tournaments_scanned} participaciones coincidieron exactamente con el ID FIDE ${payload.player.fide_id}. Se muestran ${results.length} resultados${filterDescription}.`
-    : `Info64 no devolvió participaciones para ${payload.player.name} con este intervalo.`;
+    ? t("info64.matchNote", { matched: payload.tournaments_matched, scanned: payload.tournaments_scanned, fideId: payload.player.fide_id, count: results.length, filter: filterDescription })
+    : t("info64.noParticipations", { player: payload.player.name });
 
   const warnings = $("#info64-warnings");
   warnings.hidden = !payload.warnings.length;
@@ -1468,24 +1480,24 @@ function renderInfo64Results(payload) {
   list.hidden = results.length === 0;
   empty.hidden = results.length > 0;
   $("#info64-empty p").textContent = opponentQuery
-    ? `Ningún rival coincide con “${opponentQuery}” dentro de la muestra cargada.`
-    : "Info64 puede no contener ese torneo o no asociar la participación a un ID FIDE.";
+    ? t("info64.noOpponentMatch", { query: opponentQuery })
+    : t("otb.emptyText");
   list.innerHTML = results.map((result) => {
     const resultClass = ["win", "draw", "loss"].includes(result.outcome) ? result.outcome : "draw";
-    const color = result.color === "white" ? "Blancas" : result.color === "black" ? "Negras" : "Color sin indicar";
-    const round = [result.round ? `Ronda ${result.round}` : null, result.board ? `Mesa ${result.board}` : null].filter(Boolean).join(" · ");
+    const color = result.color === "white" ? t("filter.white") : result.color === "black" ? t("filter.black") : t("info64.unknownColor");
+    const round = [result.round ? `${t("info64.round")} ${result.round}` : null, result.board ? `${t("info64.board")} ${result.board}` : null].filter(Boolean).join(" · ");
     const dateLabel = result.date
       ? `${result.date_precision === "tournament" ? "≈ " : ""}${shortDate(result.date)}${result.time ? ` · ${result.time}` : ""}`
-      : "Fecha desconocida";
+      : t("date.unknown");
     const rating = result.opponent_rating ? ` · ${result.opponent_rating}` : "";
     const fideLink = result.opponent_fide_id
       ? `<a class="info64-fide-link" href="https://ratings.fide.com/profile/${encodeURIComponent(result.opponent_fide_id)}" target="_blank" rel="noopener noreferrer">FIDE ${escapeHtml(result.opponent_fide_id)} ↗</a>`
-      : "<span>Sin ID FIDE publicado</span>";
-    const walkover = result.walkover ? " · incomparecencia" : "";
+      : `<span>${t("info64.noFideId")}</span>`;
+    const walkover = result.walkover ? ` · ${t("info64.walkover")}` : "";
     return `<article class="info64-row">
       <div class="info64-outcome ${resultClass}"><strong>${escapeHtml(result.score)}</strong><span>${escapeHtml(outcomeLabel(result.outcome))}</span></div>
-      <div class="info64-opponent"><span>Rival${rating}</span><strong>${escapeHtml(result.opponent_name)}</strong><div>${fideLink}</div></div>
-      <div class="info64-tournament"><span>${escapeHtml(round || "Ronda sin indicar")}</span><a href="${escapeHtml(safeInfo64Url(result.player_url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(result.tournament)} ↗</a></div>
+      <div class="info64-opponent"><span>${t("game.opponent")}${rating}</span><strong>${escapeHtml(result.opponent_name)}</strong><div>${fideLink}</div></div>
+      <div class="info64-tournament"><span>${escapeHtml(round || t("info64.unknownRound"))}</span><a href="${escapeHtml(safeInfo64Url(result.player_url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(result.tournament)} ↗</a></div>
       <div class="info64-when"><span>${escapeHtml(color)}${escapeHtml(walkover)}</span><strong>${escapeHtml(dateLabel)}</strong></div>
     </article>`;
   }).join("");
@@ -1495,15 +1507,15 @@ function renderInfo64Results(payload) {
 async function searchInfo64Results() {
   const fideId = $("#fide-id").value.trim();
   if (!state.fideProfile || state.fideProfile.fide_id !== fideId) {
-    toast("Verifica primero al jugador", "El ID FIDE debe corresponder a una ficha oficial.", "error");
+    toast(t("toast.verifyFirst"), t("toast.verifyFirstMessage"), "error");
     return;
   }
-  const from = readInfo64Date("info64-from", "Desde");
+  const from = readInfo64Date("info64-from", t("otb.from"));
   if (from === undefined) return;
-  const to = readInfo64Date("info64-to", "Hasta");
+  const to = readInfo64Date("info64-to", t("otb.to"));
   if (to === undefined) return;
   if (from && to && from > to) {
-    toast("Intervalo no válido", "La fecha inicial no puede ser posterior a la fecha final.", "error");
+    toast(t("toast.invalidRange"), t("toast.invalidRangeMessage"), "error");
     return;
   }
   const params = new URLSearchParams();
@@ -1511,7 +1523,7 @@ async function searchInfo64Results() {
   if (to) params.set("to", to);
   const button = $("#search-info64");
   button.disabled = true;
-  button.textContent = "Consultando Info64…";
+  button.textContent = t("loading.queryingInfo64");
   try {
     const query = params.toString();
     const suffix = query ? `?${query}` : "";
@@ -1519,14 +1531,14 @@ async function searchInfo64Results() {
     if (state.fideProfile?.fide_id !== fideId) return;
     const visibleSummary = renderInfo64Results(payload);
     const message = visibleSummary.games
-      ? `${visibleSummary.games} resultados visibles de ${visibleSummary.tournaments} torneos.`
-      : "No se encontraron resultados asociados exactamente a ese ID FIDE.";
-    toast(visibleSummary.games ? "Resultados OTB encontrados" : "Sin resultados OTB", message);
+      ? t("info64.visibleResults", { games: visibleSummary.games, tournaments: visibleSummary.tournaments })
+      : t("info64.noExactResults");
+    toast(visibleSummary.games ? t("toast.otbFound") : t("toast.otbEmpty"), message);
   } catch (error) {
-    toast("No se pudo consultar Info64", error.message, "error", { persistent: true });
+    toast(t("toast.info64Error"), error.message, "error", { persistent: true });
   } finally {
     button.disabled = false;
-    button.innerHTML = "Buscar en Info64 <span>→</span>";
+    button.innerHTML = t("otb.searchInfo64");
   }
 }
 
@@ -1534,12 +1546,12 @@ async function verifyFidePlayer() {
   const fideId = $("#fide-id").value.trim();
   if (!/^\d{5,10}$/.test(fideId)) {
     resetFideProfile();
-    toast("ID FIDE no válido", "Escribe entre 5 y 10 cifras.", "error");
+    toast(t("toast.invalidFide"), t("toast.invalidFideMessage"), "error");
     return;
   }
   const button = $("#verify-fide");
   button.disabled = true;
-  button.textContent = "Comprobando…";
+  button.textContent = t("loading.verifying");
   resetFideProfile();
   try {
     const player = await api(`/fide/players/${encodeURIComponent(fideId)}`);
@@ -1547,31 +1559,24 @@ async function verifyFidePlayer() {
     state.fideProfile = player;
     $("#fide-profile-name").textContent = player.name;
     $("#fide-profile-meta").textContent = [player.title, player.federation, `ID ${player.fide_id}`].filter(Boolean).join(" · ");
-    const ratings = [
-      ["Lenta", player.standard_rating],
-      ["Rápida", player.rapid_rating],
-      ["Blitz", player.blitz_rating],
-    ].filter(([, rating]) => rating);
-    $("#fide-profile-ratings").innerHTML = ratings
-      .map(([label, rating]) => `<span>${escapeHtml(label)} ${escapeHtml(rating)}</span>`)
-      .join("");
+    renderFideProfileRatings(player);
     renderFideRatingTrend(player.rating_history);
     $("#fide-profile").hidden = false;
     $("#info64-panel").hidden = false;
     updateImportReady();
-    toast("Jugador FIDE verificado", player.name);
+    toast(t("toast.fideVerified"), player.name);
   } catch (error) {
     resetFideProfile();
-    toast("No se pudo verificar el ID FIDE", error.message, "error");
+    toast(t("toast.fideError"), error.message, "error");
   } finally {
     button.disabled = false;
-    button.textContent = "Buscar jugador";
+    button.textContent = t("otb.searchPlayer");
   }
 }
 
 async function submitImport() {
   if (!state.pgnText) return;
-  setLoading(true, "Procesando y ordenando las partidas del PGN…");
+  setLoading(true, t("loading.processingPgn"));
   try {
     const result = await api("/datasets", {
       method: "POST",
@@ -1583,15 +1588,15 @@ async function submitImport() {
     state.pace = "global";
     $$("[data-pace]").forEach((button) => button.classList.toggle("active", button.dataset.pace === "global"));
     await loadPlayer(result.dataset.player, { scroll: true });
-    const duplicateNote = result.duplicates ? ` · ${result.duplicates} duplicadas omitidas` : "";
-    toast("PGN procesado", `${result.dataset.games.length} partidas en un dossier independiente${duplicateNote}.`);
+    const duplicateNote = result.duplicates ? t("pgn.duplicates", { count: result.duplicates }) : "";
+    toast(t("toast.pgnProcessed"), t("toast.pgnProcessedMessage", { count: result.dataset.games.length, duplicates: duplicateNote }));
     clearPgnFile();
     if (result.warnings?.length) {
-      toast("Avisos del PGN", result.warnings.join(" "), "warning", { persistent: true });
+      toast(t("toast.pgnWarnings"), result.warnings.join(" "), "warning", { persistent: true });
     }
   } catch (error) {
     setLoading(false);
-    toast("No se pudo procesar el PGN", error.message, "error");
+    toast(t("toast.pgnError"), error.message, "error");
   }
 }
 
@@ -1599,11 +1604,11 @@ async function submitCombinedProfiles() {
   const lichess = $("#combine-lichess").value.trim();
   const chesscom = $("#combine-chesscom").value.trim();
   if (!lichess && !chesscom) {
-    toast("Faltan los usuarios", "Indica al menos un alias de Lichess o Chess.com.", "error");
+    toast(t("toast.missingUsers"), t("toast.missingUsersMessage"), "error");
     return;
   }
   closeDialog("combine-dialog");
-  setLoading(true, "Uniendo los perfiles y deduplicando partidas…");
+  setLoading(true, t("loading.combiningProfiles"));
   try {
     const result = await api("/players/combined?max_games=100", {
       method: "POST",
@@ -1613,10 +1618,10 @@ async function submitCombinedProfiles() {
     $$("[data-pace]").forEach((button) => button.classList.toggle("active", button.dataset.pace === "global"));
     await loadPlayer(result.dataset.player, { scroll: true });
     const sources = result.dataset.sources.map(sourceLabel).join(" + ");
-    toast("Dossier combinado", `${result.dataset.games.length} partidas de ${sources}.`);
+    toast(t("toast.combined"), t("toast.combinedMessage", { count: result.dataset.games.length, sources }));
     if (result.warnings.length) {
       toast(
-        "Avisos de las fuentes",
+        t("toast.sourceWarnings"),
         result.warnings.join(" "),
         "warning",
         { persistent: true },
@@ -1624,11 +1629,294 @@ async function submitCombinedProfiles() {
     }
   } catch (error) {
     setLoading(false);
-    toast("No se pudieron combinar los perfiles", error.message, "error");
+    toast(t("toast.combineError"), error.message, "error");
   }
 }
 
+function eloDisciplineLabel(value) {
+  return ({ standard: t("elo.standard"), rapid: t("pace.rapid"), blitz: t("pace.blitz") })[value] || value;
+}
+
+function selectEloTab(tab) {
+  $$('[data-elo-tab]').forEach((button) => {
+    const selected = button.dataset.eloTab === tab;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-selected", String(selected));
+  });
+  $("#elo-panel-game").hidden = tab !== "game";
+  $("#elo-panel-initial").hidden = tab !== "initial";
+}
+
+function updateEloPlayerSource(card) {
+  const manual = $(".elo-source", card).value === "manual";
+  $(".elo-fide-field", card).hidden = manual;
+  $(".elo-manual-fields", card).hidden = !manual;
+}
+
+function localizeInitialEloRow(row) {
+  const source = $(".elo-row-source", row);
+  const result = $(".elo-result-select", row);
+  source.options[0].textContent = t("elo.fideIdShort");
+  source.options[1].textContent = t("elo.manualRatingShort");
+  result.options[0].textContent = t("outcome.win");
+  result.options[1].textContent = t("outcome.draw");
+  result.options[2].textContent = t("outcome.loss");
+  $(".elo-row-fide", row).placeholder = t("elo.fideIdPlaceholder");
+  $(".elo-row-rating", row).placeholder = t("elo.ratingPlaceholder");
+  $(".elo-remove-row", row).setAttribute("aria-label", t("elo.removeOpponent"));
+}
+
+function updateInitialEloRowSource(row) {
+  const manual = $(".elo-row-source", row).value === "manual";
+  $(".elo-row-fide", row).hidden = manual;
+  $(".elo-row-rating", row).hidden = !manual;
+}
+
+function addInitialEloRow(values = {}) {
+  const row = document.createElement("div");
+  row.className = "elo-initial-row";
+  row.innerHTML = `
+    <select class="text-field elo-row-source" aria-label="${escapeHtml(t("elo.dataSource"))}">
+      <option value="fide"></option><option value="manual"></option>
+    </select>
+    <div class="elo-row-data">
+      <input class="text-field elo-row-fide" inputmode="numeric" autocomplete="off" maxlength="10" />
+      <input class="text-field elo-row-rating" type="number" min="100" max="4000" inputmode="numeric" hidden />
+    </div>
+    <select class="text-field elo-result-select" aria-label="${escapeHtml(t("elo.result"))}">
+      <option value="win"></option><option value="draw"></option><option value="loss"></option>
+    </select>
+    <input class="text-field elo-period" type="month" aria-label="${escapeHtml(t("elo.monthYear"))}" />
+    <button class="elo-remove-row" type="button">×</button>`;
+  $(".elo-row-source", row).value = values.source || "fide";
+  $(".elo-row-fide", row).value = values.fideId || "";
+  $(".elo-row-rating", row).value = values.rating || "";
+  $(".elo-result-select", row).value = values.result || "win";
+  $(".elo-period", row).value = values.period || "";
+  localizeInitialEloRow(row);
+  updateInitialEloRowSource(row);
+  $(".elo-row-source", row).addEventListener("change", () => updateInitialEloRowSource(row));
+  $(".elo-remove-row", row).addEventListener("click", () => row.remove());
+  $("#elo-initial-rows").append(row);
+}
+
+function ensureInitialEloRows() {
+  if ($$(".elo-initial-row", $("#elo-initial-rows")).length) return;
+  for (let index = 0; index < 5; index += 1) addInitialEloRow();
+}
+
+function collectHeadToHeadPlayer(card, label) {
+  if ($(".elo-source", card).value === "fide") {
+    const fideId = $(".elo-fide-id", card).value.trim();
+    if (!/^\d{5,10}$/.test(fideId)) throw new Error(t("elo.invalidPlayerId", { player: label }));
+    return { fide_id: fideId };
+  }
+  const rating = Number($(".elo-rating", card).value);
+  const k = Number($(".elo-k", card).value);
+  if (!Number.isInteger(rating) || rating < 100 || rating > 4000) throw new Error(t("elo.invalidManualRating", { player: label }));
+  if (!Number.isInteger(k) || k < 1 || k > 40) throw new Error(t("elo.invalidK", { player: label }));
+  return { rating, k };
+}
+
+function signedElo(value) {
+  const number = Number(value || 0);
+  return `${number > 0 ? "+" : ""}${number.toLocaleString(currentLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 2 })}`;
+}
+
+function eloChangeClass(value) {
+  return Number(value) > 0 ? "positive" : Number(value) < 0 ? "negative" : "neutral";
+}
+
+function renderHeadToHeadResult(payload = state.eloGameResult) {
+  if (!payload) return;
+  const container = $("#elo-game-result");
+  const rows = payload.outcomes.map((outcome) => {
+    const label = ({ a_win: t("elo.aWins"), draw: t("outcome.draw"), b_win: t("elo.bWins") })[outcome.result];
+    return `<tr><td>${escapeHtml(label)}</td><td class="${eloChangeClass(outcome.change_a)}">${escapeHtml(signedElo(outcome.change_a))}</td><td class="${eloChangeClass(outcome.change_b)}">${escapeHtml(signedElo(outcome.change_b))}</td></tr>`;
+  }).join("");
+  const expected = payload.rated
+    ? t("elo.expectedScores", { a: formatNumber(payload.expected_a * 100), b: formatNumber(payload.expected_b * 100) })
+    : t("elo.notRated600");
+  container.innerHTML = `
+    <div class="elo-result-head">
+      <div><strong>${escapeHtml(payload.player_a.name)}</strong><span>${escapeHtml(`${payload.player_a.rating} · K ${payload.player_a.k}`)}</span></div>
+      <span class="elo-result-versus">${escapeHtml(eloDisciplineLabel(payload.discipline))}</span>
+      <div><strong>${escapeHtml(payload.player_b.name)}</strong><span>${escapeHtml(`${payload.player_b.rating} · K ${payload.player_b.k}`)}</span></div>
+    </div>
+    <table><thead><tr><th>${escapeHtml(t("elo.result"))}</th><th>${escapeHtml(t("elo.playerA"))}</th><th>${escapeHtml(t("elo.playerB"))}</th></tr></thead><tbody>${rows}</tbody></table>
+    <p class="elo-result-note">${escapeHtml(expected)} ${escapeHtml(t("elo.periodRoundingNote"))}</p>`;
+  container.hidden = false;
+}
+
+async function calculateHeadToHeadElo() {
+  const button = $("#calculate-elo-game");
+  try {
+    const body = {
+      discipline: $("#elo-discipline").value,
+      player_a: collectHeadToHeadPlayer($("[data-elo-player='a']"), "A"),
+      player_b: collectHeadToHeadPlayer($("[data-elo-player='b']"), "B"),
+    };
+    button.disabled = true;
+    button.textContent = t("elo.consultingFide");
+    state.eloGameResult = await api("/elo/head-to-head", { method: "POST", body: JSON.stringify(body) });
+    renderHeadToHeadResult();
+  } catch (error) {
+    toast(t("elo.calculationError"), error.message, "error", { persistent: true });
+  } finally {
+    button.disabled = false;
+    button.innerHTML = t("elo.calculateChanges");
+  }
+}
+
+function collectInitialEloGames() {
+  const defaultPeriod = $("#elo-default-period").value;
+  const rows = $$(".elo-initial-row", $("#elo-initial-rows"));
+  if (!rows.length) throw new Error(t("elo.addOpponentError"));
+  return rows.map((row, index) => {
+    const source = $(".elo-row-source", row).value;
+    const period = $(".elo-period", row).value || defaultPeriod;
+    if (!period) throw new Error(t("elo.missingPeriod", { row: index + 1 }));
+    const game = { result: $(".elo-result-select", row).value, period };
+    if (source === "fide") {
+      const fideId = $(".elo-row-fide", row).value.trim();
+      if (!/^\d{5,10}$/.test(fideId)) throw new Error(t("elo.invalidOpponentId", { row: index + 1 }));
+      game.fide_id = fideId;
+    } else {
+      const rating = Number($(".elo-row-rating", row).value);
+      if (!Number.isInteger(rating) || rating < 100 || rating > 4000) throw new Error(t("elo.invalidOpponentRating", { row: index + 1 }));
+      game.rating = rating;
+    }
+    return game;
+  });
+}
+
+function renderInitialEloResult(payload = state.eloInitialResult) {
+  if (!payload) return;
+  const container = $("#elo-initial-result");
+  const warnings = payload.warnings.length
+    ? `<ul class="elo-warning-list">${payload.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>`
+    : `<p class="elo-result-note">${escapeHtml(t("elo.publishable"))}</p>`;
+  const opponents = payload.games.map((game) => {
+    const fallback = game.standard_fallback ? ` · ${t("elo.standardFallback")}` : "";
+    return `<li><strong>${escapeHtml(game.name)}</strong><span>${escapeHtml(`${game.rating} · ${game.period}`)}</span><span>${escapeHtml(outcomeLabel(game.result) + fallback)}</span></li>`;
+  }).join("");
+  container.innerHTML = `
+    <div class="elo-initial-summary">
+      <div class="primary"><span>${escapeHtml(t("elo.estimatedInitial"))}</span><strong>${escapeHtml(payload.initial_rating)}</strong></div>
+      <div><span>${escapeHtml(t("elo.realGames"))}</span><strong>${escapeHtml(payload.game_count)}</strong></div>
+      <div><span>${escapeHtml(t("elo.adjustedScore"))}</span><strong>${escapeHtml(`${formatNumber(payload.adjusted_score)} / ${payload.adjusted_game_count}`)}</strong></div>
+      <div><span>${escapeHtml(t("elo.averageAndDp"))}</span><strong>${escapeHtml(`${formatNumber(payload.average_rating)} ${payload.dp >= 0 ? "+" : ""}${payload.dp}`)}</strong></div>
+    </div>
+    ${warnings}
+    <ul class="elo-opponent-list">${opponents}<li><strong>${escapeHtml(t("elo.virtualOpponents"))}</strong><span>1800 + 1800</span><span>${escapeHtml(t("elo.twoDraws"))}</span></li></ul>`;
+  container.hidden = false;
+}
+
+async function calculateInitialElo() {
+  const button = $("#calculate-initial-elo");
+  try {
+    const body = { discipline: $("#elo-discipline").value, games: collectInitialEloGames() };
+    button.disabled = true;
+    button.textContent = t("elo.consultingHistory");
+    state.eloInitialResult = await api("/elo/initial", { method: "POST", body: JSON.stringify(body) });
+    renderInitialEloResult();
+  } catch (error) {
+    toast(t("elo.calculationError"), error.message, "error", { persistent: true });
+  } finally {
+    button.disabled = false;
+    button.innerHTML = t("elo.calculateInitial");
+  }
+}
+
+function refreshEloCalculatorLanguage() {
+  $$(".elo-initial-row", $("#elo-initial-rows")).forEach(localizeInitialEloRow);
+  if (state.eloGameResult) renderHeadToHeadResult();
+  if (state.eloInitialResult) renderInitialEloResult();
+}
+
+function updateSearchPlaceholder() {
+  const input = $("#player-query");
+  if (!input) return;
+  input.placeholder = state.source === "all"
+    ? t("hero.onlinePlaceholderAll")
+    : t(state.source === "lichess" ? "hero.onlinePlaceholderLichess" : "hero.onlinePlaceholderChesscom");
+}
+
+function renderFideProfileRatings(player = state.fideProfile) {
+  if (!player) return;
+  const ratings = [
+    [t("pace.classical"), player.standard_rating],
+    [t("pace.rapid"), player.rapid_rating],
+    [t("pace.blitz"), player.blitz_rating],
+  ].filter(([, rating]) => rating);
+  $("#fide-profile-ratings").innerHTML = ratings
+    .map(([label, rating]) => `<span>${escapeHtml(label)} ${escapeHtml(rating)}</span>`)
+    .join("");
+}
+
+function refreshLocalizedInterface() {
+  updateSearchPlaceholder();
+  updateImportReady();
+  refreshEloCalculatorLanguage();
+  if (state.player && state.stats) renderAll();
+  if (state.fideProfile) {
+    renderFideProfileRatings();
+    renderFideRatingTrend(state.fideProfile.rating_history);
+  }
+  if (state.info64Results) renderInfo64Results(state.info64Results);
+  if (state.viewerGame) {
+    renderViewerMeta();
+    renderMoves();
+    renderBoard();
+    renderAnalysisUi();
+  }
+}
+
+function closeLanguageMenu({ restoreFocus = false } = {}) {
+  const menu = $("#language-menu");
+  const button = $("#language-button");
+  if (!menu || !button || menu.hidden) return;
+  menu.hidden = true;
+  button.setAttribute("aria-expanded", "false");
+  if (restoreFocus) button.focus();
+}
+
+function toggleLanguageMenu() {
+  const menu = $("#language-menu");
+  const button = $("#language-button");
+  const open = menu.hidden;
+  menu.hidden = !open;
+  button.setAttribute("aria-expanded", String(open));
+  if (open) $("[data-language].active", menu)?.focus();
+}
+
 function bindEvents() {
+  $("#elo-calculator").addEventListener("click", () => {
+    ensureInitialEloRows();
+    openDialog("elo-dialog");
+  });
+  $$('[data-elo-tab]').forEach((button) => button.addEventListener("click", () => selectEloTab(button.dataset.eloTab)));
+  $$(".elo-player-card").forEach((card) => {
+    $(".elo-source", card).addEventListener("change", () => updateEloPlayerSource(card));
+    updateEloPlayerSource(card);
+  });
+  $("#add-elo-opponent").addEventListener("click", () => addInitialEloRow({ period: $("#elo-default-period").value }));
+  $("#calculate-elo-game").addEventListener("click", calculateHeadToHeadElo);
+  $("#calculate-initial-elo").addEventListener("click", calculateInitialElo);
+  $("#elo-discipline").addEventListener("change", () => {
+    state.eloGameResult = null;
+    state.eloInitialResult = null;
+    $("#elo-game-result").hidden = true;
+    $("#elo-initial-result").hidden = true;
+  });
+  $("#language-button").addEventListener("click", (event) => { event.stopPropagation(); toggleLanguageMenu(); });
+  $("#language-menu").addEventListener("click", (event) => event.stopPropagation());
+  $$('[data-language]').forEach((button) => button.addEventListener("click", () => {
+    i18n.setLanguage(button.dataset.language);
+    closeLanguageMenu({ restoreFocus: true });
+  }));
+  document.addEventListener("click", () => closeLanguageMenu());
+  document.addEventListener("chessprep:languagechange", refreshLocalizedInterface);
   $("#player-search").addEventListener("submit", searchPlayer);
   $("#hero-otb-search").addEventListener("submit", submitHeroOtbSearch);
   $$('[data-search-mode]').forEach((button) => button.addEventListener('click', () => selectHeroSearchMode(button.dataset.searchMode)));
@@ -1638,9 +1926,7 @@ function bindEvents() {
   $$("[data-source]").forEach((button) => button.addEventListener("click", () => {
     state.source = button.dataset.source;
     $$("[data-source]").forEach((item) => item.classList.toggle("active", item === button));
-    $("#player-query").placeholder = state.source === "all"
-      ? "Usuario común en ambas plataformas…"
-      : `Usuario exacto de ${sourceLabel(state.source)}…`;
+    updateSearchPlaceholder();
   }));
   $$("[data-opening-color]").forEach((button) => button.addEventListener("click", () => {
     state.openingColor = button.dataset.openingColor;
@@ -1730,15 +2016,21 @@ function bindEvents() {
       }
     }
     if (event.key === "Escape") {
-      if (!$("#viewer-dialog").hidden) closeDialog("viewer-dialog");
+      if (!$("#language-menu").hidden) closeLanguageMenu({ restoreFocus: true });
+      else if (!$("#viewer-dialog").hidden) closeDialog("viewer-dialog");
       else if (!$("#import-dialog").hidden) closeDialog("import-dialog");
+      else if (!$("#elo-dialog").hidden) closeDialog("elo-dialog");
+      else if (!$("#combine-dialog").hidden) closeDialog("combine-dialog");
     }
   });
 }
 
 function init() {
+  i18n.apply();
   renderMiniBoard();
   bindEvents();
+  updateSearchPlaceholder();
+  updateImportReady();
 }
 
 document.addEventListener("DOMContentLoaded", init);

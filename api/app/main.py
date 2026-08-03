@@ -14,6 +14,9 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from api.app.models import (
     CombinedPlayerCreate,
     DatasetCreate,
+    EloDiscipline,
+    EloHeadToHeadRequest,
+    EloInitialRequest,
     GameType,
     Info64ResultsResponse,
     Info64Summary,
@@ -33,6 +36,8 @@ from api.app.providers.lichess import (
 )
 from api.app.providers.fide import (
     ProviderUnavailable as FideUnavailable,
+    get_current_rating_data,
+    get_historical_rating,
     get_player as get_fide_player,
 )
 from api.app.providers.info64 import (
@@ -40,6 +45,7 @@ from api.app.providers.info64 import (
     fetch_results as fetch_info64_results,
 )
 from api.app.services.pgn import parse_pgn
+from api.app.services.elo import calculate_head_to_head, calculate_initial_rating
 from api.app.services.stats import calculate_stats, filter_games
 from api.app.services.store import store
 
@@ -487,6 +493,180 @@ def fide_player_detail(fide_id: str):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except FideUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _resolve_current_elo_players(payload: EloHeadToHeadRequest) -> list[dict[str, object]]:
+    inputs = [payload.player_a, payload.player_b]
+    fide_ids = [player.fide_id for player in inputs if player.fide_id]
+    try:
+        official_ratings = (
+            get_current_rating_data(fide_ids, payload.discipline) if fide_ids else {}
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except FideUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    resolved: list[dict[str, object]] = []
+    for index, player_input in enumerate(inputs):
+        if player_input.fide_id:
+            if player_input.rating is not None or player_input.k is not None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="No mezcles un ID FIDE con Elo o K manuales en el mismo jugador.",
+                )
+            current = official_ratings.get(player_input.fide_id)
+            if not current:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"El jugador {player_input.fide_id} no tiene Elo {payload.discipline.value} "
+                        "en la lista mensual actual de FIDE."
+                    ),
+                )
+            try:
+                profile = get_fide_player(player_input.fide_id, include_history=False)
+            except LookupError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except FideUnavailable as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            resolved.append(
+                {
+                    "name": profile.name,
+                    "fide_id": profile.fide_id,
+                    "rating": current["rating"],
+                    "k": current["k"],
+                    "source": "fide_current_list",
+                }
+            )
+            continue
+        if player_input.rating is None or player_input.k is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Indica ID FIDE o Elo y K manuales para el jugador {'A' if index == 0 else 'B'}.",
+            )
+        resolved.append(
+            {
+                "name": f"Jugador {'A' if index == 0 else 'B'}",
+                "fide_id": None,
+                "rating": player_input.rating,
+                "k": player_input.k,
+                "source": "manual",
+            }
+        )
+    return resolved
+
+
+@app.post("/api/v1/elo/head-to-head")
+def elo_head_to_head(payload: EloHeadToHeadRequest):
+    players = _resolve_current_elo_players(payload)
+    calculation = calculate_head_to_head(
+        int(players[0]["rating"]),
+        int(players[0]["k"]),
+        int(players[1]["rating"]),
+        int(players[1]["k"]),
+        payload.discipline,
+    )
+    return {
+        "discipline": payload.discipline,
+        "player_a": players[0],
+        "player_b": players[1],
+        **calculation,
+    }
+
+
+@app.post("/api/v1/elo/initial")
+def elo_initial(payload: EloInitialRequest):
+    resolved_games: list[dict[str, object]] = []
+    profile_cache: dict[str, object] = {}
+    history_cache: dict[tuple[str, EloDiscipline, str], dict[str, object]] = {}
+    score_by_result = {"win": 1.0, "draw": 0.5, "loss": 0.0}
+    for index, game in enumerate(payload.games, start=1):
+        if game.fide_id:
+            if game.rating is not None:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"No mezcles ID FIDE y Elo manual en el rival {index}.",
+                )
+            try:
+                if game.fide_id not in profile_cache:
+                    profile_cache[game.fide_id] = get_fide_player(
+                        game.fide_id, include_history=False
+                    )
+                key = (game.fide_id, payload.discipline, game.period)
+                if key not in history_cache:
+                    history_cache[key] = get_historical_rating(
+                        game.fide_id, payload.discipline, game.period
+                    )
+            except LookupError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except FideUnavailable as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            profile = profile_cache[game.fide_id]
+            historical = history_cache[key]
+            if historical["rating"] is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"{profile.name} no tenía Elo {payload.discipline.value} "
+                        f"publicado en {game.period}."
+                    ),
+                )
+            resolved_games.append(
+                {
+                    "name": profile.name,
+                    "fide_id": game.fide_id,
+                    "rating": historical["rating"],
+                    "rating_source": historical["rating_source"],
+                    "standard_fallback": historical["standard_fallback"],
+                    "period": game.period,
+                    "result": game.result.value,
+                    "score": score_by_result[game.result.value],
+                    "source": "fide_history",
+                }
+            )
+            continue
+        if game.rating is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Indica el ID FIDE o el Elo manual del rival {index}.",
+            )
+        resolved_games.append(
+            {
+                "name": f"Rival {index}",
+                "fide_id": None,
+                "rating": game.rating,
+                "rating_source": payload.discipline.value,
+                "standard_fallback": False,
+                "period": game.period,
+                "result": game.result.value,
+                "score": score_by_result[game.result.value],
+                "source": "manual",
+            }
+        )
+
+    calculation = calculate_initial_rating(resolved_games)
+    warnings: list[str] = []
+    if calculation["game_count"] < 5:
+        warnings.append("FIDE exige al menos cinco partidas reales contra rivales evaluados.")
+    if calculation["real_score"] == 0:
+        warnings.append("Un resultado inicial de cero puntos no produce una valoración publicada.")
+    if not calculation["within_26_months"]:
+        warnings.append("Las partidas abarcan más de 26 periodos mensuales consecutivos.")
+    if calculation["initial_rating"] < 1400:
+        warnings.append("El resultado queda por debajo del suelo de publicación de 1400.")
+    if calculation["capped_at_2200"]:
+        warnings.append("FIDE limita la valoración inicial máxima a 2200.")
+    if any(game["standard_fallback"] for game in resolved_games):
+        warnings.append(
+            "En rápido o blitz se utilizó el Elo estándar cuando el rival no tenía Elo propio en esa lista."
+        )
+    return {
+        "discipline": payload.discipline,
+        "games": resolved_games,
+        "warnings": warnings,
+        **calculation,
+    }
 
 
 @app.get(

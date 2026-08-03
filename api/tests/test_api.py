@@ -19,13 +19,15 @@ def test_health_and_demo_are_available():
 def test_demo_is_synthetic_and_only_loads_after_an_explicit_action():
     index = client.get("/").text
     script = client.get("/app.js").text
+    translations = client.get("/i18n.js").text
     games = client.get("/api/v1/players/demo/jugador-muestra/games?mode=combined&page_size=20").json()["items"]
 
     assert 'id="analisis" aria-live="polite" hidden' in index
     assert 'id="partidas" hidden' in index
     assert "Ver ejemplo ficticio" in index
     assert "loadDemo(false)" not in script
-    assert "Ejemplo ficticio cargado" in script
+    assert 't("toast.demoLoaded")' in script
+    assert '"toast.demoLoaded": "Ejemplo ficticio cargado"' in translations
     assert all(game["source"] == "demo" for game in games)
     assert all(game["source_confidence"] == "synthetic" for game in games)
 
@@ -48,10 +50,36 @@ def test_loader_cycles_all_pieces_without_disabling_its_timer():
     index = client.get("/").text
     script = client.get("/app.js").text
 
-    assert "/app.js?v=20260803-honest-demo" in index
+    assert "/app.js?v=20260803-elo-calculator" in index
     assert 'const LOADER_PIECES = ["♙", "♘", "♗", "♖", "♕", "♔"];' in script
     assert "const LOADER_INTERVAL_MS = 450;" in script
     assert "window.setInterval(advanceLoaderPiece, LOADER_INTERVAL_MS)" in script
+
+
+def test_language_switcher_and_elo_calculator_are_available():
+    index = client.get("/").text
+    script = client.get("/app.js").text
+    translations = client.get("/i18n.js").text
+
+    assert 'id="elo-calculator"' in index
+    assert 'id="language-button"' in index
+    assert 'id="language-menu"' in index
+    assert index.count('data-language="') == 5
+    assert "/i18n.js?v=20260803-elo-calculator" in index
+    assert 'const STORAGE_KEY = "chessprep_language";' in translations
+    assert '{ code: "es"' in translations
+    assert '{ code: "en"' in translations
+    assert '{ code: "de"' in translations
+    assert '{ code: "fr"' in translations
+    assert '{ code: "it"' in translations
+    assert 'document.addEventListener("chessprep:languagechange", refreshLocalizedInterface)' in script
+    assert 'i18n.setLanguage(button.dataset.language)' in script
+    assert 'id="elo-dialog"' in index
+    assert 'id="elo-panel-game"' in index
+    assert 'id="elo-panel-initial"' in index
+    assert 'id="elo-default-period" type="month"' in index
+    assert 'api("/elo/head-to-head"' in script
+    assert 'api("/elo/initial"' in script
     assert 'if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;' not in script
 
 

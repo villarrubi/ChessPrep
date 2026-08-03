@@ -28,6 +28,18 @@ class Pace(str, Enum):
     CLASSICAL = "classical"
 
 
+class EloDiscipline(str, Enum):
+    STANDARD = "standard"
+    RAPID = "rapid"
+    BLITZ = "blitz"
+
+
+class EloGameResult(str, Enum):
+    WIN = "win"
+    DRAW = "draw"
+    LOSS = "loss"
+
+
 class PlayerRef(BaseModel):
     source: str
     external_id: str
@@ -90,6 +102,30 @@ class DatasetCreate(BaseModel):
 class CombinedPlayerCreate(BaseModel):
     lichess_username: str | None = Field(default=None, min_length=2, max_length=80)
     chesscom_username: str | None = Field(default=None, min_length=2, max_length=80)
+
+
+class EloPlayerInput(BaseModel):
+    fide_id: str | None = Field(default=None, pattern=r"^\d{5,10}$")
+    rating: int | None = Field(default=None, ge=100, le=4000)
+    k: int | None = Field(default=None, ge=1, le=40)
+
+
+class EloHeadToHeadRequest(BaseModel):
+    discipline: EloDiscipline
+    player_a: EloPlayerInput
+    player_b: EloPlayerInput
+
+
+class EloInitialGameInput(BaseModel):
+    fide_id: str | None = Field(default=None, pattern=r"^\d{5,10}$")
+    rating: int | None = Field(default=None, ge=100, le=4000)
+    result: EloGameResult
+    period: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+
+
+class EloInitialRequest(BaseModel):
+    discipline: EloDiscipline
+    games: list[EloInitialGameInput] = Field(min_length=1, max_length=60)
 
 
 class FideRatingPoint(BaseModel):

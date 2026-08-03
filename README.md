@@ -17,6 +17,8 @@ Aplicación web de preparación ajedrecística para torneos. Convierte partidas 
 - Búsqueda OTB por ID FIDE: ficha oficial, evolución mensual de los Elo lento, rápido y blitz durante los últimos tres años, participaciones de Info64 contrastadas por el mismo ID, rivales, resultados, rondas, fechas y balance con filtro temporal.
 - Importación PGN independiente de la búsqueda de jugadores: acepta `.pgn` y `.txt`, deduplica las partidas, infiere como perspectiva del dossier el nombre más repetido y crea un dataset temporal con TTL sin exigir ID FIDE ni coincidencias con una ficha oficial.
 - Ejemplo ficticio integrado para probar la interfaz y los cálculos sin red; solo se carga mediante una acción expresa y se identifica como sintético en la API y en pantalla.
+- Interfaz disponible en español, inglés, alemán, francés e italiano. El selector superior aplica el idioma sin recargar, recuerda la elección en el navegador y no utiliza servicios externos de traducción.
+- Calculadora FIDE con dos modos: variación de Elo entre dos jugadores usando el rating y la K de la lista mensual actual, y estimación de Elo inicial con resultados, mes/año y el rating histórico de cada rival. Ambos admiten ID FIDE o datos manuales y aplican las tablas y límites vigentes de FIDE.
 - API OpenAPI documentada en `/api/docs`.
 - Sin cuentas, base de datos, Redis, colas ni IA generativa.
 
@@ -24,11 +26,13 @@ Aplicación web de preparación ajedrecística para torneos. Convierte partidas 
 
 ```text
 web/                       SPA responsive (HTML, CSS y JavaScript)
+web/i18n.js                Traducciones locales, detección y persistencia del idioma
 web/js/                    Motor Stockfish (cliente), calidad de jugadas y modo explorar
 web/vendor/                chess.js y Stockfish WASM/JS (ver vendor/NOTICE.md)
 api/app/main.py            Endpoints FastAPI y servidor local del frontend
 api/app/services/pgn.py    Normalización PGN, SAN, UCI, FEN y deduplicación
 api/app/services/stats.py  Filtros y estadísticas deterministas
+api/app/services/elo.py    Tablas y cálculos de rating conforme al reglamento FIDE
 api/app/services/store.py  Datasets en memoria con caducidad
 api/app/providers/         Integraciones con Lichess, Chess.com, FIDE e Info64
 api/tests/                 Pruebas del contrato, parser y estadísticas
@@ -106,7 +110,7 @@ docker compose up --build
 .venv\Scripts\python -m pytest -q
 ```
 
-Las pruebas comprueban que el ejemplo sintético no se precarga ni se confunde con una fuente real, además de sus totales estadísticos, los filtros por ritmo y apertura, la exclusión de variantes, la trazabilidad de una partida, las posiciones del visor, las integraciones de proveedor, el historial de los tres Elo FIDE y la importación PGN independiente con deduplicación e inferencia de jugador.
+Las pruebas comprueban que el ejemplo sintético no se precarga ni se confunde con una fuente real, los cinco idiomas, las tablas y reglas de la calculadora FIDE, además de los totales estadísticos, los filtros por ritmo y apertura, la exclusión de variantes, la trazabilidad de una partida, las posiciones del visor, las integraciones de proveedor, el historial de los tres Elo FIDE y la importación PGN independiente con deduplicación e inferencia de jugador.
 
 ## API principal
 
@@ -123,12 +127,14 @@ GET  /api/v1/players/{source}/{external_id}/stats/openings
 GET  /api/v1/games/{source}/{game_id}
 GET  /api/v1/fide/players/{fide_id}
 GET  /api/v1/fide/players/{fide_id}/info64-results?from={YYYY-MM-DD}&to={YYYY-MM-DD}
+POST /api/v1/elo/head-to-head
+POST /api/v1/elo/initial
 POST /api/v1/datasets
 GET  /api/v1/datasets/{dataset_id}/games
 GET  /api/v1/datasets/{dataset_id}/stats
 ```
 
-Cada resultado estadístico declara su muestra, fuentes, ritmo y rango temporal. `GET /demo` devuelve únicamente el acceso al ejemplo ficticio, cuyos registros usan la fuente `demo` y confianza `synthetic`. `GET /fide/players/{fide_id}` incluye `rating_history`, con puntos mensuales validados para `rating`, `rapid_rating` y `blitz_rating`. `POST /datasets` crea siempre un dossier PGN independiente: no acepta fusionarlo con otro dataset. Los datasets importados se guardan únicamente en memoria y caducan por defecto a los 30 minutos.
+Cada resultado estadístico declara su muestra, fuentes, ritmo y rango temporal. `GET /demo` devuelve únicamente el acceso al ejemplo ficticio, cuyos registros usan la fuente `demo` y confianza `synthetic`. `GET /fide/players/{fide_id}` incluye `rating_history`, con puntos mensuales validados para `rating`, `rapid_rating` y `blitz_rating`. La variación de una partida consulta la lista oficial actual de estándar, rápido o blitz para obtener Elo y K; el archivo comprimido se conserva temporalmente en memoria durante seis horas. El cálculo inicial consulta el historial FIDE completo de cada ID para el mes indicado y añade los dos empates virtuales contra rivales de 1800 previstos en el reglamento. `POST /datasets` crea siempre un dossier PGN independiente: no acepta fusionarlo con otro dataset. Los datasets importados se guardan únicamente en memoria y caducan por defecto a los 30 minutos.
 
 ## Configuración
 
