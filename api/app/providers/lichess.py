@@ -12,7 +12,7 @@ from api.app.services.text import clean_identifier, clean_untrusted_text
 
 
 BASE_URL = "https://lichess.org"
-USER_AGENT = "ChessPrep/1.0 (educational tournament preparation tool)"
+USER_AGENT = "ChessPrep/1.0"
 MAX_RESPONSE_BYTES = 12_000_000
 STANDARD_PERF_TYPES = (
     "ultraBullet",
