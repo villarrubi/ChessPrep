@@ -56,12 +56,13 @@
 
     async submitHeroSearch(event) {
       event.preventDefault();
-      const fideId = this.$("#hero-fide-id").value.trim();
-      if (!/^\d{5,10}$/.test(fideId)) {
+      const fideId = this._normalizeFideId(this.$("#hero-fide-id").value);
+      if (!fideId) {
         this.toast(this.t("toast.invalidFide"), this.t("toast.invalidFideMessage"), "error");
         this.$("#hero-fide-id").focus();
         return;
       }
+      this.$("#hero-fide-id").value = fideId;
       this.$("#fide-id").value = fideId;
       this.resetProfile();
       this.openDialog("import-dialog");
@@ -69,12 +70,13 @@
     }
 
     async verifyPlayer() {
-      const fideId = this.$("#fide-id").value.trim();
-      if (!/^\d{5,10}$/.test(fideId)) {
+      const fideId = this._normalizeFideId(this.$("#fide-id").value);
+      if (!fideId) {
         this.resetProfile();
         this.toast(this.t("toast.invalidFide"), this.t("toast.invalidFideMessage"), "error");
         return;
       }
+      this.$("#fide-id").value = fideId;
       const button = this.$("#verify-fide");
       button.disabled = true;
       button.textContent = this.t("loading.verifying");
@@ -512,6 +514,11 @@
         .replace(/[\u0300-\u036f]/g, "")
         .toLocaleLowerCase("es")
         .trim();
+    }
+
+    _normalizeFideId(value) {
+      const compact = String(value || "").replace(/\s+/g, "");
+      return /^\d{5,10}$/.test(compact) ? compact : null;
     }
 
     _safeInfo64Url(value, fallback = "https://info64.org/search-player") {

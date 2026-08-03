@@ -66,7 +66,7 @@ def test_loader_cycles_all_pieces_without_disabling_its_timer():
     index = client.get("/").text
     script = client.get("/app.js").text
 
-    assert "/app.js?v=20260803-refactor" in index
+    assert "/app.js?v=20260803-hotfix1" in index
     assert 'const LOADER_PIECES = ["♙", "♘", "♗", "♖", "♕", "♔"];' in script
     assert "const LOADER_INTERVAL_MS = 450;" in script
     assert "window.setInterval(advanceLoaderPiece, LOADER_INTERVAL_MS)" in script
@@ -82,7 +82,7 @@ def test_language_switcher_and_elo_calculator_are_available():
     assert 'id="language-button"' in index
     assert 'id="language-menu"' in index
     assert index.count('data-language="') == 5
-    assert "/i18n.js?v=20260803-refactor" in index
+    assert "/i18n.js?v=20260803-hotfix1" in index
     assert 'const STORAGE_KEY = "chessprep_language";' in translations
     assert '{ code: "es"' in translations
     assert '{ code: "en"' in translations
@@ -165,12 +165,27 @@ def test_header_is_clean_and_online_otb_searches_have_equal_modes():
     assert 'class="search-mode-tabs"' in index
     assert 'data-search-mode="online"' in index
     assert 'data-search-mode="otb"' in index
-    assert 'id="hero-otb-search"' in index
+    assert 'id="hero-otb-search" role="search" novalidate' in index
     assert 'id="hero-fide-id"' in index
+    assert 'pattern="[0-9]{5,10}"' not in index
     assert 'id="importar-pgn"' in index
     assert "#menu-button" not in app_script
     assert "selectHeroSearchMode" in dossier_script
     assert "submitHeroSearch" in otb_script
+    assert 'replace(/\\s+/g, "")' in otb_script
+
+
+def test_game_viewer_owns_its_fen_parser_and_loading_dependency():
+    app_script = client.get("/app.js").text
+    viewer_script = client.get("/js/gameViewerController.js").text
+    dossier_script = client.get("/js/dossierController.js").text
+
+    assert "function parseFen(fen)" in viewer_script
+    assert "function parseFen(fen)" not in dossier_script
+    assert "setLoading = dependencies.setLoading" in viewer_script
+    viewer_start = app_script.index("viewerController = new GameViewerController({")
+    viewer_end = app_script.index("dossierController = new DossierController({")
+    assert "setLoading," in app_script[viewer_start:viewer_end]
 
 
 def test_game_result_badges_keep_their_layout_and_use_stable_color_markers():
@@ -264,6 +279,22 @@ def fide_player(fide_id="1000001", name="Alice Smith"):
         blitz_rating=2300,
         profile_url=f"https://ratings.fide.com/profile/{fide_id}",
     )
+
+
+def test_fide_player_endpoint_returns_the_verified_profile(monkeypatch):
+    import api.app.main as main_module
+
+    monkeypatch.setattr(
+        main_module,
+        "get_fide_player",
+        lambda fide_id, **_: fide_player(fide_id, "Alejandro Villarrubia"),
+    )
+
+    response = client.get("/api/v1/fide/players/94711151")
+
+    assert response.status_code == 200
+    assert response.json()["fide_id"] == "94711151"
+    assert response.json()["name"] == "Alejandro Villarrubia"
 
 
 def test_info64_endpoint_returns_statistics_and_validates_dates(monkeypatch):

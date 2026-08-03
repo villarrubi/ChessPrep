@@ -342,7 +342,7 @@ Móvil: responsive; sin app store. PWA opcional más adelante.
 
 ### 11.1 Estado de validación del despliegue
 
-Tras la separación del backend y los controladores del frontend se han validado 49 pruebas automatizadas, la compilación de todos los módulos Python, la sintaxis de los 11 archivos JavaScript y la entrega HTTP de todos los recursos declarados en `index.html`. El contrato OpenAPI conserva los 18 endpoints públicos existentes antes de la refactorización.
+Tras la separación del backend y los controladores del frontend se han validado 51 pruebas automatizadas, la compilación de todos los módulos Python, la sintaxis de los 11 archivos JavaScript y la entrega HTTP de todos los recursos declarados en `index.html`. El contrato OpenAPI conserva los 18 endpoints públicos existentes antes de la refactorización.
 
 Los archivos Docker también se han adaptado: la imagen de API incluye `web/js` y `web/vendor`, mientras que la imagen Nginx continúa publicando esos directorios y redirigiendo `/api`. Sin embargo, el equipo donde se realizó esta revisión no dispone del ejecutable Docker. Por ello, la siguiente comprobación sigue pendiente y debe hacerse en un entorno con Docker instalado:
 

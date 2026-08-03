@@ -5,6 +5,7 @@
   // Its lower-level helpers remain private behind this controller facade.
   let state;
   let api;
+  let setLoading;
   let toast;
   let openDialog;
   let t;
@@ -23,6 +24,7 @@
     constructor(dependencies) {
       state = dependencies.state;
       api = dependencies.api;
+      setLoading = dependencies.setLoading;
       toast = dependencies.toast;
       openDialog = dependencies.openDialog;
       t = dependencies.t;
@@ -244,6 +246,19 @@
   function currentBoardFen() {
     if (explore.active) return explore.fen();
     return state.viewerGame?.fens[state.ply] || "";
+  }
+
+  function parseFen(fen) {
+    const board = [];
+    for (const row of fen.split(" ")[0].split("/")) {
+      const cells = [];
+      for (const char of row) {
+        if (/\d/.test(char)) cells.push(...Array(Number(char)).fill(""));
+        else cells.push(char);
+      }
+      board.push(cells);
+    }
+    return board;
   }
 
   function renderBoard() {

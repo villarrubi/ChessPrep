@@ -464,19 +464,6 @@
     }
   }
 
-  function parseFen(fen) {
-    const board = [];
-    for (const row of fen.split(" ")[0].split("/")) {
-      const cells = [];
-      for (const char of row) {
-        if (/\d/.test(char)) cells.push(...Array(Number(char)).fill(""));
-        else cells.push(char);
-      }
-      board.push(cells);
-    }
-    return board;
-  }
-
   async function submitCombinedProfiles() {
     const lichess = $("#combine-lichess").value.trim();
     const chesscom = $("#combine-chesscom").value.trim();

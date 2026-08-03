@@ -127,7 +127,7 @@ Las pruebas comprueban que el ejemplo sintético no se precarga ni se confunde c
 
 A fecha de esta revisión, el estado es:
 
-- **49 pruebas automatizadas superadas**.
+- **51 pruebas automatizadas superadas**.
 - Todo el backend compila correctamente con `python -m compileall api`.
 - Los 11 módulos JavaScript pasan validación sintáctica.
 - Todos los CSS y scripts referenciados por `index.html` se sirven con código HTTP 200 y las cabeceras de seguridad previstas.

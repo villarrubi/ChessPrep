@@ -313,6 +313,7 @@ function init() {
   viewerController = new GameViewerController({
     state,
     api,
+    setLoading,
     toast,
     openDialog,
     t,

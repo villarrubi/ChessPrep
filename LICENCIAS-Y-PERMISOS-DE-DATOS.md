@@ -13,15 +13,15 @@ Los correos originales deben conservarse en formato `.eml`, con sus cabeceras co
 | Fuente | Contacto registrado | Estado del permiso | Uso actual en ChessPrep | Próximo paso |
 |---|---|---|---|---|
 | [Lumbra’s Gigabase](https://lumbrasgigabase.com/) | Michael Jansen | Autorizado para un proyecto abierto, gratuito, estrictamente no comercial y sin monetización, bajo CC BY-NC-SA 4.0 | Todavía no integrado | Confirmar el índice persistente y la posible copia indexada en un servidor público |
-| PGN Mentor | Equipo de PGN Mentor / 64 Squares | Autorización escrita para uso público no comercial; se prohíbe monetizar los PGN | Todavía no integrado | Aclarar atribución, automatización, almacenamiento y alcance de los derechos sobre material procedente de terceros |
+| [PGN Mentor](https://www.pgnmentor.com/files.html) | Equipo de PGN Mentor / 64 Squares | Autorización escrita para uso público no comercial; se prohíbe monetizar los PGN | Todavía no integrado | Aclarar atribución, automatización, almacenamiento y alcance de los derechos sobre material procedente de terceros |
 | [The Week in Chess (TWIC)](https://theweekinchess.com/) | Mark Crowther | No existe permiso gratuito: se ha propuesto una licencia de 30 GBP al mes | No integrado | No utilizar hasta aceptar o negociar por escrito un acuerdo completo |
-| YottaChess | Isaac; contacto iniciado por correo y LinkedIn | Sin respuesta o autorización registrada | No integrado | Esperar una respuesta escrita y archivar la identidad y el correo exactos del contacto |
+| [YottaChess](https://www.yottachess.com/) | Isaac; contacto iniciado por correo y LinkedIn | Sin respuesta o autorización registrada | No integrado | Esperar una respuesta escrita y archivar la identidad y el correo exactos del contacto |
 
 ## 1. Lumbra’s Gigabase
 
 ### Estado
 
-**Autorización recibida para el modelo no comercial actual, con dos aclaraciones técnicas pendientes.**
+**Autorización recibida para el modelo no comercial actual, con varias aclaraciones técnicas pendientes.**
 
 Michael Jansen confirmó por escrito que ChessPrep puede utilizar Lumbra’s Gigabase gratuitamente bajo la licencia [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) mientras el proyecto permanezca:
 
@@ -168,3 +168,17 @@ Una fuente solo podrá activarse como proveedor cuando estén registrados:
 8. La ubicación privada de la evidencia original en formato `.eml`.
 
 Ante cualquier duda, la fuente permanecerá desactivada hasta recibir una aclaración escrita.
+
+## 8. Archivo privado recomendado
+
+Los correos originales no deben publicarse en GitHub. Se recomienda conservarlos en una carpeta privada y respaldada, con nombres consistentes, por ejemplo:
+
+```text
+2026-08-03_lumbras-gigabase_michael-jansen_01.eml
+2026-08-03_lumbras-gigabase_michael-jansen_02.eml
+2026-08-03_pgn-mentor_respuesta.eml
+2026-08-03_twic_mark-crowther_respuesta.eml
+2026-08-03_yottachess_solicitud.eml
+```
+
+El repositorio público conservará únicamente este resumen y, cuando corresponda, los textos de atribución y las licencias públicas aplicables.
