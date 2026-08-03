@@ -17,8 +17,11 @@
   let $$;
   let PIECES;
   let engine;
+  let exploreEngine;
   let gameAnalysis;
   let explore;
+  let draggedSquare = null;
+  let suppressBoardClick = false;
 
   class GameViewerController {
     constructor(dependencies) {
@@ -36,8 +39,9 @@
       $$ = dependencies.$$;
       PIECES = dependencies.pieces;
       engine = new global.StockfishEngine();
+      exploreEngine = new global.StockfishEngine();
       gameAnalysis = new global.GameAnalysisController(engine);
-      explore = new global.ExploreMode(engine);
+      explore = new global.ExploreMode(exploreEngine);
       state.engineDepth = loadEngineSetting(
         "chessprep_engine_depth",
         global.STOCKFISH_DEFAULT_DEPTH,
@@ -57,9 +61,8 @@
         button.addEventListener("click", () => handleViewerControl(button.dataset.move));
       });
       $("#analysis-toggle").addEventListener("change", (event) => setAnalysisEnabled(event.target.checked));
-      $("#explore-toggle").addEventListener("click", () => toggleExploreMode());
-      $("#explore-undo").addEventListener("click", () => explore.undo());
-      $("#explore-exit").addEventListener("click", () => exitExploreMode());
+      $("#explore-undo").addEventListener("click", undoManualMove);
+      $("#explore-exit").addEventListener("click", resetManualVariation);
       $("#eval-curve").addEventListener("click", handleEvalCurveClick);
       ["analysis-depth", "analysis-lines"].forEach((id) => {
         const input = document.getElementById(id);
@@ -120,13 +123,9 @@
         event.preventDefault();
         setAnalysisEnabled(!state.analysisEnabled);
       }
-      if (!typing && (event.key === "e" || event.key === "E")) {
+      if (event.key === "Escape" && explore.canUndo()) {
         event.preventDefault();
-        toggleExploreMode();
-      }
-      if (event.key === "Escape" && explore.active) {
-        event.preventDefault();
-        exitExploreMode();
+        resetManualVariation();
         return true;
       }
       return false;
@@ -166,6 +165,11 @@
       state.ply = 0;
       renderViewerMeta();
       renderMoves();
+      try {
+        await initializeInteractiveBoard();
+      } catch (error) {
+        toast(t("toast.exploreError"), error.message || String(error), "error");
+      }
       renderBoard();
       renderAnalysisUi();
       openDialog("viewer-dialog");
@@ -273,7 +277,7 @@
     ];
     const rows = blackPerspective ? [...position].reverse() : position;
     const ordered = rows.map((row) => blackPerspective ? [...row].reverse() : row);
-    const last = (!explore.active && state.ply) ? game.moves_uci[state.ply - 1] : "";
+    const last = (!explore.canUndo() && state.ply) ? game.moves_uci[state.ply - 1] : "";
     const highlighted = last ? [last.slice(0, 2), last.slice(2, 4)] : [];
     const selected = explore.active ? explore.selectedSquare : null;
     const legal = explore.active ? explore.legalTargets : [];
@@ -291,17 +295,14 @@
       ].filter(Boolean).join(" ");
       const fileCoord = rowIndex === 7 ? `<span class="coord file">${files[colIndex]}</span>` : "";
       const rankCoord = colIndex === 0 ? `<span class="coord rank">${ranks[rowIndex]}</span>` : "";
+      const draggable = explore.active && piece && explore.canMoveFrom(squareName) ? ' draggable="true"' : "";
       html +=
-        `<span class="${classes}" data-square="${squareName}">${fileCoord}${rankCoord}${PIECES[piece] || ""}</span>`;
+        `<span class="${classes}" data-square="${squareName}"${draggable}>${fileCoord}${rankCoord}${PIECES[piece] || ""}</span>`;
     }));
     $("#chessboard").innerHTML = html;
-    if (explore.active) {
-      $$(".board-square", $("#chessboard")).forEach((square) => {
-        square.addEventListener("click", () => explore.handleSquareClick(square.dataset.square));
-      });
-    }
+    if (explore.active) bindExploreBoardEvents();
     $("#move-count").textContent = `${state.ply} / ${game.moves.length}`;
-    if (explore.active) {
+    if (explore.canUndo()) {
       $("#move-label").textContent = t("dynamic.exploreMode");
     } else {
       $("#move-label").textContent = state.ply ? t("dynamic.afterMove", {
@@ -312,11 +313,65 @@
     renderEvalBar();
   }
 
+  function bindExploreBoardEvents() {
+    const board = $("#chessboard");
+    $$(".board-square", board).forEach((square) => {
+      square.addEventListener("click", () => {
+        if (suppressBoardClick) return;
+        explore.handleSquareClick(square.dataset.square);
+      });
+      square.addEventListener("dragstart", (event) => {
+        const from = square.dataset.square;
+        const targets = explore.legalMovesFrom(from);
+        if (!targets.length) {
+          event.preventDefault();
+          return;
+        }
+        draggedSquare = from;
+        suppressBoardClick = true;
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", from);
+        square.classList.add("dragging", "selected");
+        targets.forEach((target) => {
+          board.querySelector(`[data-square="${target}"]`)?.classList.add("legal-target", "drag-target");
+        });
+      });
+      square.addEventListener("dragover", (event) => {
+        if (!draggedSquare || !explore.legalMovesFrom(draggedSquare).includes(square.dataset.square)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        square.classList.add("drag-over");
+      });
+      square.addEventListener("dragleave", () => square.classList.remove("drag-over"));
+      square.addEventListener("drop", (event) => {
+        const from = event.dataTransfer.getData("text/plain") || draggedSquare;
+        const to = square.dataset.square;
+        if (!from || !explore.legalMovesFrom(from).includes(to)) return;
+        event.preventDefault();
+        clearBoardDragState();
+        explore.movePiece(from, to);
+      });
+      square.addEventListener("dragend", () => {
+        clearBoardDragState();
+        window.setTimeout(() => { suppressBoardClick = false; }, 120);
+      });
+    });
+  }
+
+  function clearBoardDragState() {
+    draggedSquare = null;
+    $$(".board-square", $("#chessboard")).forEach((square) => {
+      square.classList.remove("dragging", "drag-target", "drag-over", "selected", "legal-target");
+    });
+  }
+
   function setPly(value) {
     if (!state.viewerGame) return;
-    if (explore.active) exitExploreMode();
     state.ply = Math.max(0, Math.min(value, state.viewerGame.moves.length));
     state.selectedLine = 1;
+    state.liveProbeId += 1;
+    state.liveLines = [];
+    if (explore.active) explore.setPosition(state.viewerGame.fens[state.ply], state.ply);
     renderBoard();
     renderMoves();
     renderAnalysisSummary();
@@ -326,14 +381,12 @@
 
   function handleViewerControl(action) {
     if (!state.viewerGame) return;
-    if (explore.active && action !== "play") exitExploreMode();
     if (action !== "play" && state.playTimer) stopPlaying();
     if (action === "first") setPly(0);
     if (action === "prev") setPly(state.ply - 1);
     if (action === "next") setPly(state.ply + 1);
     if (action === "last") setPly(state.viewerGame.moves.length);
     if (action === "play") {
-      if (explore.active) exitExploreMode();
       state.playTimer ? stopPlaying() : startPlaying();
     }
   }
@@ -381,10 +434,8 @@
   function renderAnalysisUi() {
     const enabled = state.analysisEnabled;
     const body = $("#analysis-body");
-    const exploreBtn = $("#explore-toggle");
     const evalBar = $("#eval-bar");
     if (body) body.hidden = !enabled;
-    if (exploreBtn) exploreBtn.hidden = !enabled;
     if (evalBar) {
       evalBar.hidden = !enabled;
       evalBar.setAttribute("aria-hidden", enabled ? "false" : "true");
@@ -433,12 +484,14 @@
   }
 
   function currentPlyEval() {
-    if (explore.active && explore.lastTry?.status === "done") return explore.lastTry.score;
+    if (explore.canUndo()) {
+      return explore.lastTry?.status === "done" ? explore.lastTry.score : null;
+    }
     return state.analysis?.evals?.[state.ply] || null;
   }
 
   function currentMoveJudgment() {
-    if (explore.active && explore.lastTry) return explore.lastTry;
+    if (explore.canUndo()) return explore.lastTry || null;
     if (!state.ply || !state.analysis?.plies) return null;
     return state.analysis.plies[state.ply - 1] || null;
   }
@@ -462,7 +515,7 @@
       `${t("filter.black")} ${formatNumber(state.analysis.blackAccuracy)}%`);
 
     let moveLine = t("viewer.initial");
-    if (explore.active) {
+    if (explore.canUndo()) {
       if (explore.lastTry?.status === "analyzing") moveLine = t("analysis.evaluatingMove");
       else if (explore.lastTry?.status === "done") {
         moveLine =
@@ -540,12 +593,16 @@
       el.innerHTML = "";
       return;
     }
+    if (explore.canUndo()) {
+      el.innerHTML = `<div class="analysis-line-empty">${escapeHtml(t("analysis.manualHint"))}</div>`;
+      return;
+    }
     if (!state.liveLines.length) {
       el.innerHTML =
         `<div class="analysis-line-empty">${escapeHtml(t("dynamic.calculatingLines", { count: state.engineLines, lines: t(state.engineLines === 1 ? "dynamic.line" : "dynamic.lines"), depth: state.engineDepth }))}</div>`;
       return;
     }
-    const side = (explore.active ? explore.fen() : state.viewerGame?.fens[state.ply] || "").split(" ")[1] || "w";
+    const side = (state.viewerGame?.fens[state.ply] || "").split(" ")[1] || "w";
     el.innerHTML = state.liveLines.map((line) => {
       const whiteScore = toWhitePov(line.score, side);
       const evalText = MoveQuality.formatEval(whiteScore);
@@ -567,7 +624,7 @@
   }
 
   async function probeLiveLines() {
-    if (!state.analysisEnabled || !state.viewerGame || explore.active) return;
+    if (!state.analysisEnabled || !state.viewerGame || explore.canUndo()) return;
     const probeId = ++state.liveProbeId;
     const fen = state.viewerGame.fens[state.ply];
     const depth = state.engineDepth;
@@ -612,18 +669,15 @@
   function renderBoardArrow() {
     const svg = $("#board-arrows");
     if (!svg) return;
-    if (!state.analysisEnabled || !state.viewerGame) {
+    if (!state.analysisEnabled || !state.viewerGame || explore.canUndo()) {
       svg.innerHTML = "";
       return;
     }
     let uci = "";
-    if (explore.active && explore.lastTry?.bestUci) uci = explore.lastTry.bestUci;
-    else {
-      const live = selectedLiveLine();
-      if (live?.moveUci) uci = live.moveUci;
-      else if (state.ply > 0) uci = state.analysis?.plies?.[state.ply - 1]?.bestUci || "";
-      else uci = state.analysis?.plies?.[0]?.bestUci || "";
-    }
+    const live = selectedLiveLine();
+    if (live?.moveUci) uci = live.moveUci;
+    else if (state.ply > 0) uci = state.analysis?.plies?.[state.ply - 1]?.bestUci || "";
+    else uci = state.analysis?.plies?.[0]?.bestUci || "";
     if (!uci || uci.length < 4) {
       svg.innerHTML = "";
       return;
@@ -711,13 +765,13 @@
     setPly(ply);
   }
 
-  async function setAnalysisEnabled(enabled) {
+  function setAnalysisEnabled(enabled) {
     state.analysisEnabled = enabled;
     $("#analysis-toggle").checked = enabled;
     if (!enabled) {
       state.liveProbeId += 1;
       gameAnalysis.stop();
-      if (explore.active) exitExploreMode();
+      if (explore.canUndo()) resetManualVariation();
       state.liveLines = [];
       renderAnalysisUi();
       renderMoves();
@@ -726,11 +780,11 @@
     }
     if (!state.viewerGame) return;
     renderAnalysisUi();
-    try {
-      // Always start from a clean worker; some WASM builds can wedge mid-session.
-      engine.terminate();
-      probeLiveLines();
-      await gameAnalysis.start(state.viewerGame, {
+    // Do not block the controls until the complete game has been analysed.
+    // Manual moves have a separate worker and can be evaluated immediately.
+    engine.terminate();
+    void probeLiveLines();
+    void gameAnalysis.start(state.viewerGame, {
         depth: state.engineDepth,
         onUpdate: (analysis) => {
           if (!state.analysisEnabled || !state.viewerGame) return;
@@ -748,14 +802,14 @@
             toast(t("toast.analysisError"), analysis.error || t("dynamic.engineError"), "error");
           }
         },
-      });
-    } catch (error) {
+      }).catch((error) => {
       engine.terminate();
+      if (!state.analysisEnabled) return;
       state.analysisEnabled = false;
       $("#analysis-toggle").checked = false;
       renderAnalysisUi();
       toast(t("toast.engineUnavailable"), error.message || String(error), "error");
-    }
+      });
   }
 
   async function applyEngineSettingsFromInputs({
@@ -780,6 +834,7 @@
     syncEngineSettingInputs();
 
     if (!state.analysisEnabled || !state.viewerGame) return;
+    if (explore.canUndo()) return;
     if (depthChanged && restartGameAnalysis) {
       gameAnalysis.stop();
       state.analysis = null;
@@ -797,13 +852,10 @@
     const bar = $("#explore-bar");
     const feedback = $("#explore-feedback");
     const undo = $("#explore-undo");
-    const toggle = $("#explore-toggle");
-    if (!bar || !feedback || !undo || !toggle) return;
-    bar.hidden = !explore.active;
-    toggle.classList.toggle("active", explore.active);
-    toggle.textContent = explore.active ? t("dynamic.exploring") : t("viewer.explore");
+    if (!bar || !feedback || !undo) return;
+    bar.hidden = !explore.canUndo();
     undo.disabled = !explore.canUndo();
-    if (!explore.active) {
+    if (!explore.canUndo()) {
       feedback.textContent = "";
       return;
     }
@@ -818,47 +870,49 @@
     }
   }
 
-  async function enterExploreMode() {
-    if (!state.viewerGame || !state.analysisEnabled) return;
-    if (state.playTimer) stopPlaying();
-    state.liveProbeId += 1;
-    try {
-      await explore.enter(state.viewerGame.fens[state.ply], state.ply, {
-        getSettings: getEngineSettings,
-        onChange: () => {
-          renderBoard();
-          renderExploreBar();
-          renderAnalysisSummary();
-          renderBoardArrow();
-          renderEvalBar();
-        },
-      });
-      renderBoard();
-      renderExploreBar();
-      renderAnalysisSummary();
-      renderLiveLines();
-    } catch (error) {
-      toast(t("toast.exploreError"), error.message || String(error), "error");
-    }
-  }
-
-  function exitExploreMode() {
-    if (!explore.active) return;
-    explore.exit();
+  function renderInteractiveBoardState() {
     renderBoard();
     renderExploreBar();
     renderAnalysisSummary();
+    renderLiveLines();
     renderBoardArrow();
     renderEvalBar();
-    if (state.analysisEnabled) probeLiveLines();
   }
 
-  async function toggleExploreMode() {
-    if (!state.analysisEnabled) {
-      await setAnalysisEnabled(true);
+  function handleManualMove() {
+    if (state.playTimer) stopPlaying();
+    state.liveProbeId += 1;
+    state.liveLines = [];
+    state.selectedLine = 1;
+    if (!state.analysisEnabled) setAnalysisEnabled(true);
+  }
+
+  async function initializeInteractiveBoard() {
+    if (!state.viewerGame) return;
+    await explore.enter(state.viewerGame.fens[state.ply], state.ply, {
+      getSettings: getEngineSettings,
+      onMove: handleManualMove,
+      onChange: renderInteractiveBoardState,
+    });
+  }
+
+  function resetManualVariation() {
+    if (!state.viewerGame || !explore.active) return;
+    state.liveProbeId += 1;
+    state.liveLines = [];
+    state.selectedLine = 1;
+    explore.setPosition(state.viewerGame.fens[state.ply], state.ply);
+    if (state.analysisEnabled) void probeLiveLines();
+  }
+
+  function undoManualMove() {
+    if (!explore.canUndo()) return;
+    explore.undo();
+    if (!explore.canUndo() && state.analysisEnabled) {
+      state.liveProbeId += 1;
+      state.liveLines = [];
+      void probeLiveLines();
     }
-    if (explore.active) exitExploreMode();
-    else await enterExploreMode();
   }
 
   global.GameViewerController = GameViewerController;

@@ -7,7 +7,7 @@
 - Frontend estático con controladores independientes para dossier, visor, OTB, PGN y calculadora Elo.
 - Backend FastAPI separado en configuración, seguridad, routers, servicios y proveedores con dependencias explícitas.
 - Lichess, Chess.com, FIDE, Info64, importación PGN y Stockfish en cliente implementados.
-- 51 pruebas automatizadas superadas tras la refactorización y la corrección del visor.
+- 53 pruebas automatizadas superadas tras la refactorización y la conversión del visor interactivo en una pantalla de trabajo completa.
 - Arranque directo con Python validado.
 - Dockerfiles y Compose actualizados; la construcción de las imágenes queda pendiente de verificación en un equipo con Docker instalado.
 

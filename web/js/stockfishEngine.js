@@ -24,12 +24,18 @@
     async init() {
       if (this.ready) return;
       if (this._initPromise) return this._initPromise;
-      this._initPromise = this._doInit().catch((error) => {
-        this._initPromise = null;
-        this.terminate();
+      const initPromise = this._doInit();
+      const guardedPromise = initPromise.catch((error) => {
+        // A cancelled initialization may reject after a new Worker has already
+        // started. Only the promise that is still current may tear it down.
+        if (this._initPromise === guardedPromise) {
+          this._initPromise = null;
+          this.terminate();
+        }
         throw error;
       });
-      return this._initPromise;
+      this._initPromise = guardedPromise;
+      return guardedPromise;
     }
 
     async _doInit() {

@@ -250,10 +250,13 @@ El resultado debe incluir siempre el tamaño de la muestra, fuentes, rango tempo
 
 ### 8.2 Stockfish (implementado en el cliente)
 
-El visor ejecuta Stockfish en un Web Worker del navegador, sin bloquear la API ni enviar posiciones a servicios externos:
+El visor ejecuta Stockfish en Web Workers del navegador, sin bloquear la API ni enviar posiciones a servicios externos:
 
-- Worker UCI → evaluación, líneas MultiPV, calidad de jugada y momentos clave.
-- Análisis progresivo y modo explorar; las estadísticas básicas y la reproducción paso a paso no dependen del motor.
+- Superficie de trabajo a pantalla completa: tablero y navegación permanecen juntos; jugadas y análisis ocupan paneles con desplazamiento independiente.
+- Worker UCI principal → evaluación progresiva, líneas MultiPV, calidad de jugada y momentos clave.
+- Worker UCI independiente para las variantes manuales → permite arrastrar o seleccionar jugadas legales y valorar inmediatamente la última sin esperar al análisis completo.
+- El tablero admite movimientos legales por defecto desde cualquier posición, sin un botón de activación. El primer movimiento manual abre el análisis automáticamente; una jugada nueva, deshacer o volver a la partida cancela únicamente la evaluación manual obsoleta.
+- Las estadísticas básicas y la reproducción paso a paso no dependen del motor.
 - Sin texto generado: solo números (centipawns, clasificación de jugada).
 
 ---
@@ -342,7 +345,7 @@ Móvil: responsive; sin app store. PWA opcional más adelante.
 
 ### 11.1 Estado de validación del despliegue
 
-Tras la separación del backend y los controladores del frontend se han validado 51 pruebas automatizadas, la compilación de todos los módulos Python, la sintaxis de los 11 archivos JavaScript y la entrega HTTP de todos los recursos declarados en `index.html`. El contrato OpenAPI conserva los 18 endpoints públicos existentes antes de la refactorización.
+Tras la separación del backend y los controladores del frontend se han validado 53 pruebas automatizadas, la compilación de todos los módulos Python, la sintaxis de los 11 archivos JavaScript y la entrega HTTP de todos los recursos declarados en `index.html`. El contrato OpenAPI conserva los 18 endpoints públicos existentes antes de la refactorización.
 
 Los archivos Docker también se han adaptado: la imagen de API incluye `web/js` y `web/vendor`, mientras que la imagen Nginx continúa publicando esos directorios y redirigiendo `/api`. Sin embargo, el equipo donde se realizó esta revisión no dispone del ejecutable Docker. Por ello, la siguiente comprobación sigue pendiente y debe hacerse en un entorno con Docker instalado:
 

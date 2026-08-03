@@ -66,7 +66,7 @@ def test_loader_cycles_all_pieces_without_disabling_its_timer():
     index = client.get("/").text
     script = client.get("/app.js").text
 
-    assert "/app.js?v=20260803-hotfix1" in index
+    assert "/app.js?v=20260803-fullscreen-viewer1" in index
     assert 'const LOADER_PIECES = ["♙", "♘", "♗", "♖", "♕", "♔"];' in script
     assert "const LOADER_INTERVAL_MS = 450;" in script
     assert "window.setInterval(advanceLoaderPiece, LOADER_INTERVAL_MS)" in script
@@ -82,7 +82,7 @@ def test_language_switcher_and_elo_calculator_are_available():
     assert 'id="language-button"' in index
     assert 'id="language-menu"' in index
     assert index.count('data-language="') == 5
-    assert "/i18n.js?v=20260803-hotfix1" in index
+    assert "/i18n.js?v=20260803-fullscreen-viewer1" in index
     assert 'const STORAGE_KEY = "chessprep_language";' in translations
     assert '{ code: "es"' in translations
     assert '{ code: "en"' in translations
@@ -186,6 +186,55 @@ def test_game_viewer_owns_its_fen_parser_and_loading_dependency():
     viewer_start = app_script.index("viewerController = new GameViewerController({")
     viewer_end = app_script.index("dossierController = new DossierController({")
     assert "setLoading," in app_script[viewer_start:viewer_end]
+
+
+def test_manual_moves_are_draggable_and_use_an_independent_engine():
+    index = client.get("/").text
+    viewer_script = client.get("/js/gameViewerController.js").text
+    explore_script = client.get("/js/exploreMode.js").text
+    engine_script = client.get("/js/stockfishEngine.js").text
+    translations = client.get("/i18n.js").text
+    styles = client.get("/styles.css").text
+
+    assert "/js/exploreMode.js?v=20260803-fullscreen-viewer1" in index
+    assert 'id="explore-toggle"' not in index
+    assert "exploreEngine = new global.StockfishEngine()" in viewer_script
+    assert "new global.ExploreMode(exploreEngine)" in viewer_script
+    assert "await initializeInteractiveBoard()" in viewer_script
+    assert "onMove: handleManualMove" in viewer_script
+    assert "if (!state.analysisEnabled) setAnalysisEnabled(true)" in viewer_script
+    assert "toggleExploreMode" not in viewer_script
+    assert "bindExploreBoardEvents()" in viewer_script
+    assert 'draggable="true"' in viewer_script
+    assert "movePiece(from, to)" in explore_script
+    assert "setPosition(fen, ply)" in explore_script
+    assert 'typeof this.onMove === "function"' in explore_script
+    assert "this.analyzing) return" not in explore_script
+    assert "const evaluationId = ++this.evaluationId" in explore_script
+    assert "this._initPromise === guardedPromise" in engine_script
+    assert '"analysis.manualHint"' in translations
+    assert '.board-square.drag-over' in styles
+
+
+def test_game_viewer_is_a_fullscreen_workspace_with_independent_panels():
+    index = client.get("/").text
+    styles = client.get("/styles.css").text
+
+    assert '<div class="viewer-backdrop" id="viewer-dialog" hidden>' in index
+    assert 'class="dialog-backdrop viewer-backdrop"' not in index
+    assert '<section class="viewer-screen" role="region"' in index
+    assert 'class="viewer-body"' in index
+    assert 'class="viewer-moves-pane"' in index
+    assert 'id="viewer-analysis-title"' in index
+    assert 'class="viewer-scroll-area"' not in index
+    board_start = index.index('class="viewer-board-column"')
+    controls = index.index('class="viewer-controls"')
+    info_start = index.index('class="viewer-info"')
+    assert board_start < controls < info_start
+    assert ".viewer-screen { width: 100%; height: 100dvh;" in styles
+    assert "#viewer-dialog.analysis-on .viewer-info" in styles
+    assert ".viewer-moves-pane { overflow: hidden;" in styles
+    assert ".analysis-body { min-height: 0;" in styles
 
 
 def test_game_result_badges_keep_their_layout_and_use_stable_color_markers():

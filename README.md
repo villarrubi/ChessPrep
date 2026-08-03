@@ -48,7 +48,7 @@ La dependencia fluye desde los adaptadores hacia el núcleo: las rutas HTTP llam
 
 ### Análisis Stockfish (cliente)
 
-El visor puede activar **Analizar** (tecla `A`) para evaluar la partida en el navegador con Stockfish. No hay endpoint de motor en la API: el Worker carga `/vendor/stockfish/stockfish.js` y clasifica cada jugada por pérdida en centipawns. En el panel puedes ajustar **profundidad (5–30)** y **líneas MultiPV (1–30)**; por defecto usa profundidad 14 y 3 líneas. El modo **Explorar** (tecla `E`) permite probar jugadas en la posición actual. El tiempo depende de la CPU del dispositivo; partidas largas se rellenan de forma progresiva.
+El visor ocupa la pantalla completa y conserva el tablero y los controles de navegación en una zona estable. A la derecha, la lista de jugadas usa todo el espacio cuando Stockfish está apagado; al activar **Analizar** (tecla `A`), se divide en dos paneles independientes y desplazables para que ninguna función quede fuera de la vista. El análisis se ejecuta en el navegador: el Worker carga `/vendor/stockfish/stockfish.js` y clasifica cada jugada por pérdida en centipawns. En el panel puedes ajustar **profundidad (5–30)** y **líneas MultiPV (1–30)**; por defecto usa profundidad 14 y 3 líneas. El tablero es interactivo desde que se abre la partida y desde cualquier posición: basta con arrastrar una pieza o seleccionar sus casillas para probar una jugada legal. El primer movimiento manual activa el análisis automáticamente y muestra su calidad, pérdida en centipawns y alternativa óptima. Se pueden encadenar jugadas, deshacerlas o volver a la línea original; esta interacción utiliza un Worker independiente para no quedar bloqueada detrás del análisis progresivo de la partida.
 
 El documento técnico proponía Next.js como una tecnología orientativa. Para este MVP se ha usado una SPA sin proceso de build: mantiene la separación `web/api`, reduce dependencias y permite ejecutar el producto con Python solamente. FastAPI también sirve los archivos web en desarrollo; en Docker, Nginx expone el frontend y redirige `/api` al servicio correspondiente.
 
@@ -127,7 +127,7 @@ Las pruebas comprueban que el ejemplo sintético no se precarga ni se confunde c
 
 A fecha de esta revisión, el estado es:
 
-- **51 pruebas automatizadas superadas**.
+- **53 pruebas automatizadas superadas**.
 - Todo el backend compila correctamente con `python -m compileall api`.
 - Los 11 módulos JavaScript pasan validación sintáctica.
 - Todos los CSS y scripts referenciados por `index.html` se sirven con código HTTP 200 y las cabeceras de seguridad previstas.

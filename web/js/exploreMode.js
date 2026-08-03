@@ -12,12 +12,22 @@
       this.legalTargets = [];
       this.lastTry = null;
       this.analyzing = false;
+      this.evaluationId = 0;
       this.onChange = null;
+      this.onMove = null;
       this.getSettings = null;
     }
 
-    async enter(fen, ply, { onChange, getSettings } = {}) {
+    async enter(fen, ply, { onChange, onMove, getSettings } = {}) {
       await global.loadChessScript("/vendor/chess/chess.min.js");
+      this.onChange = onChange || null;
+      this.onMove = onMove || null;
+      this.getSettings = getSettings || null;
+      this.setPosition(fen, ply);
+    }
+
+    setPosition(fen, ply) {
+      this._cancelEvaluation();
       this.active = true;
       this.basePly = ply;
       this.baseFen = fen;
@@ -25,8 +35,6 @@
       this.selectedSquare = null;
       this.legalTargets = [];
       this.lastTry = null;
-      this.onChange = onChange || null;
-      this.getSettings = getSettings || null;
       this._emit();
     }
 
@@ -40,6 +48,7 @@
     }
 
     exit() {
+      this._cancelEvaluation();
       this.active = false;
       this.chess = null;
       this.selectedSquare = null;
@@ -47,6 +56,9 @@
       this.lastTry = null;
       this.analyzing = false;
       this._emit();
+      this.onChange = null;
+      this.onMove = null;
+      this.getSettings = null;
     }
 
     fen() {
@@ -59,6 +71,7 @@
 
     undo() {
       if (!this.active || !this.chess) return;
+      this._cancelEvaluation();
       this.chess.undo();
       this.selectedSquare = null;
       this.legalTargets = [];
@@ -66,13 +79,24 @@
       this._emit();
     }
 
+    canMoveFrom(square) {
+      if (!this.active || !this.chess) return false;
+      const piece = this.chess.get(square);
+      return Boolean(piece && piece.color === this.chess.turn());
+    }
+
+    legalMovesFrom(square) {
+      if (!this.canMoveFrom(square)) return [];
+      return this.chess.moves({ square, verbose: true }).map((move) => move.to);
+    }
+
     boardPosition() {
       if (!this.chess) return null;
       return this.chess.board();
     }
 
-    async handleSquareClick(square) {
-      if (!this.active || !this.chess || this.analyzing) return;
+    handleSquareClick(square) {
+      if (!this.active || !this.chess) return;
 
       if (this.selectedSquare) {
         if (square === this.selectedSquare) {
@@ -83,22 +107,12 @@
         }
         if (this.legalTargets.includes(square)) {
           const from = this.selectedSquare;
-          const promotion = needsPromotion(this.chess, from, square) ? "q" : undefined;
-          const move = this.chess.move({ from, to: square, promotion });
-          this.selectedSquare = null;
-          this.legalTargets = [];
-          if (move) {
-            this._emit();
-            await this._evaluateLastMove(move);
-          } else {
-            this._emit();
-          }
+          this.movePiece(from, square);
           return;
         }
       }
 
-      const piece = this.chess.get(square);
-      if (!piece || piece.color !== this.chess.turn()) {
+      if (!this.canMoveFrom(square)) {
         this.selectedSquare = null;
         this.legalTargets = [];
         this._emit();
@@ -106,37 +120,54 @@
       }
 
       this.selectedSquare = square;
-      this.legalTargets = this.chess.moves({ square, verbose: true }).map((move) => move.to);
+      this.legalTargets = this.legalMovesFrom(square);
       this._emit();
     }
 
-    async _evaluateLastMove(move) {
+    movePiece(from, to) {
+      if (!this.active || !this.chess || !this.legalMovesFrom(from).includes(to)) return false;
+      const fenBefore = this.chess.fen();
+      const promotion = needsPromotion(this.chess, from, to) ? "q" : undefined;
+      const move = this.chess.move({ from, to, promotion });
+      this.selectedSquare = null;
+      this.legalTargets = [];
+      if (!move) {
+        this._emit();
+        return false;
+      }
+      if (typeof this.onMove === "function") this.onMove(move, this);
+      this._emit();
+      void this._evaluateLastMove(move, fenBefore);
+      return true;
+    }
+
+    async _evaluateLastMove(move, fenBefore) {
+      // Manual analysis uses its own worker. A newer move cancels only the stale
+      // manual request, never the background analysis of the original game.
+      const evaluationId = ++this.evaluationId;
+      const triedUci = `${move.from}${move.to}${move.promotion || ""}`;
+      this.engine.terminate();
       this.analyzing = true;
       this.lastTry = {
         san: move.san,
-        uci: `${move.from}${move.to}${move.promotion || ""}`,
+        uci: triedUci,
         status: "analyzing",
       };
       this._emit();
 
       try {
         await this.engine.init();
-        const fenBefore = (() => {
-          const clone = new global.Chess(this.baseFen);
-          const history = this.chess.history({ verbose: true });
-          history.slice(0, -1).forEach((item) => {
-            clone.move({ from: item.from, to: item.to, promotion: item.promotion });
-          });
-          return clone.fen();
-        })();
+        if (evaluationId !== this.evaluationId || !this.active) return;
 
         const sideToMove = fenBefore.split(" ")[1] || "w";
         const depth = this._depth();
         const best = await this.engine.analyzeFen(fenBefore, { depth, multipv: 1 });
+        if (evaluationId !== this.evaluationId || !this.active) return;
         let playedScore = best.score;
-        if (this.lastTry.uci !== best.bestMove) {
-          playedScore = await this.engine.evaluateMove(fenBefore, this.lastTry.uci, { depth });
+        if (triedUci !== best.bestMove) {
+          playedScore = await this.engine.evaluateMove(fenBefore, triedUci, { depth });
         }
+        if (evaluationId !== this.evaluationId || !this.active) return;
         const cpl = global.MoveQuality.centipawnLoss(best.score, playedScore, sideToMove);
         const judgment = global.MoveQuality.classifyCpl(cpl, {
           missedMate: typeof best.score?.mate === "number" && best.score.mate > 0 &&
@@ -157,15 +188,24 @@
           bestScore: global.toWhitePov(best.score, sideToMove),
         };
       } catch (error) {
+        if (evaluationId !== this.evaluationId || !this.active) return;
         this.lastTry = {
           ...this.lastTry,
           status: "error",
           error: error.message || String(error),
         };
       } finally {
-        this.analyzing = false;
-        this._emit();
+        if (evaluationId === this.evaluationId && this.active) {
+          this.analyzing = false;
+          this._emit();
+        }
       }
+    }
+
+    _cancelEvaluation() {
+      this.evaluationId += 1;
+      this.analyzing = false;
+      try { this.engine.terminate(); } catch { /* ignore */ }
     }
 
     _emit() {
