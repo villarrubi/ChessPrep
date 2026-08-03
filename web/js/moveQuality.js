@@ -1,6 +1,7 @@
 "use strict";
 
 (function (global) {
+  const WIN_PERCENT_COEFFICIENT = 0.00368208;
   const JUDGMENT_LABELS = {
     best: "Óptima",
     excellent: "Excelente",
@@ -27,14 +28,28 @@
     return Math.max(0, best - played);
   }
 
-  function classifyCpl(cpl, { missedMate = false, allowedMate = false } = {}) {
-    if (missedMate) return "blunder";
-    if (allowedMate && cpl > 50) return "blunder";
-    if (cpl <= 5) return "best";
-    if (cpl <= 20) return "excellent";
-    if (cpl <= 50) return "good";
-    if (cpl <= 100) return "inaccuracy";
-    if (cpl <= 200) return "mistake";
+  /** Convert an engine score into the expected score (0–100) for that side. */
+  function winPercent(score) {
+    const cp = scoreToCpWhite(score);
+    return 50 + 50 * (2 / (1 + Math.exp(-WIN_PERCENT_COEFFICIENT * cp)) - 1);
+  }
+
+  /** Loss of expected score, in percentage points, caused by the move. */
+  function winChanceLoss(bestScore, playedScore) {
+    return Math.max(0, winPercent(bestScore) - winPercent(playedScore));
+  }
+
+  function classifyWinLoss(winLoss, {
+    isBest = false,
+    missedMate = false,
+    allowedMate = false,
+  } = {}) {
+    if (missedMate || allowedMate) return "blunder";
+    if (isBest) return "best";
+    if (winLoss <= 2) return "excellent";
+    if (winLoss <= 5) return "good";
+    if (winLoss <= 10) return "inaccuracy";
+    if (winLoss <= 20) return "mistake";
     return "blunder";
   }
 
@@ -53,19 +68,30 @@
     return JUDGMENT_LABELS[judgment] || judgment || "";
   }
 
-  function accuracyFromCpls(cpls) {
-    if (!cpls.length) return null;
-    const avg = cpls.reduce((sum, value) => sum + value, 0) / cpls.length;
-    const accuracy = 100 * (0.8 ** (avg / 50));
-    return Math.max(0, Math.min(100, Math.round(accuracy * 10) / 10));
+  function moveAccuracy(winLoss) {
+    const value = 103.1668 * Math.exp(-0.04354 * Math.max(0, winLoss)) - 3.1669;
+    return Math.max(0, Math.min(100, value));
+  }
+
+  /**
+   * Aggregate per-move accuracy with a harmonic mean so one serious error is
+   * not hidden by a long sequence of easy moves. This is ChessPrep's own
+   * transparent aggregation; the per-move conversion follows Lichess's model.
+   */
+  function accuracyFromWinLosses(winLosses) {
+    if (!winLosses.length) return null;
+    const accuracies = winLosses.map((loss) => Math.max(0.01, moveAccuracy(loss)));
+    const harmonic = accuracies.length /
+      accuracies.reduce((sum, accuracy) => sum + (1 / accuracy), 0);
+    return Math.round(harmonic * 10) / 10;
   }
 
   function buildKeyMoments(plyEvals, { limit = 8 } = {}) {
     const severity = { blunder: 3, mistake: 2, inaccuracy: 1 };
     return plyEvals
       .filter((item) => item && severity[item.judgment])
-      .filter((item) => item.judgment !== "inaccuracy" || item.cpl >= 50)
-      .sort((a, b) => (severity[b.judgment] - severity[a.judgment]) || (b.cpl - a.cpl))
+      .sort((a, b) => (severity[b.judgment] - severity[a.judgment]) ||
+        ((b.winLoss || 0) - (a.winLoss || 0)))
       .slice(0, limit)
       .map((item) => ({
         ply: item.ply,
@@ -73,6 +99,7 @@
         judgment: item.judgment,
         glyph: judgmentGlyph(item.judgment),
         cpl: item.cpl,
+        winLoss: item.winLoss,
         reason: judgmentLabel(item.judgment),
         bestSan: item.bestSan || "",
       }));
@@ -99,10 +126,13 @@
   global.MoveQuality = {
     scoreToCpWhite,
     centipawnLoss,
-    classifyCpl,
+    winPercent,
+    winChanceLoss,
+    classifyWinLoss,
     judgmentGlyph,
     judgmentLabel,
-    accuracyFromCpls,
+    moveAccuracy,
+    accuracyFromWinLosses,
     buildKeyMoments,
     formatEval,
     evalBarRatio,

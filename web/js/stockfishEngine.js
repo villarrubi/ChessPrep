@@ -1,13 +1,22 @@
 "use strict";
 
 (function (global) {
-  const WORKER_URL = "/vendor/stockfish/stockfish.js";
-  const DEFAULT_DEPTH = 14;
+  const WORKER_URL = "/vendor/stockfish/stockfish-18-lite-single.js";
+  const ENGINE_VERSION = "18-lite-single-18.0.8";
+  const ENGINE_CACHE_NAMESPACE = `stockfish-${ENGINE_VERSION}`;
+  const DEFAULT_NODES = 150000;
   const DEFAULT_LINES = 3;
-  const MAX_DEPTH = 30;
+  const MAX_NODES = 2000000;
   const MAX_LINES = 30;
-  const MIN_DEPTH = 5;
+  const MIN_NODES = 10000;
   const MIN_LINES = 1;
+  const POSITION_CACHE_LIMIT = 256;
+
+  // All StockfishEngine instances share completed position searches. The
+  // interactive worker can therefore reuse the exact reference result shown
+  // by the viewer, and returning to a position does not trigger a new answer.
+  const positionCache = new Map();
+  const pendingSearches = new Map();
 
   class StockfishEngine {
     constructor() {
@@ -19,6 +28,7 @@
       this._listeners = new Set();
       this._requestId = 0;
       this._multipv = 1;
+      this.name = "Stockfish 18 Lite";
     }
 
     async init() {
@@ -52,8 +62,11 @@
           pending.reject(error);
         }
       };
-      await this._sendAndWait("uci", (line) => line === "uciok", 20000);
-      await this._sendAndWait("isready", (line) => line === "readyok", 20000);
+      await this._sendAndWait("uci", (line) => {
+        if (line.startsWith("id name ")) this.name = line.slice(8).trim() || this.name;
+        return line === "uciok";
+      }, 60000);
+      await this._sendAndWait("isready", (line) => line === "readyok", 30000);
       this.ready = true;
     }
 
@@ -62,80 +75,96 @@
       return () => this._listeners.delete(listener);
     }
 
-    async analyzeFen(fen, { depth = DEFAULT_DEPTH, multipv = 1 } = {}) {
-      await this.init();
-      const safeDepth = clamp(depth, MIN_DEPTH, MAX_DEPTH);
+    async analyzeFen(fen, { nodes = DEFAULT_NODES, multipv = 1 } = {}) {
+      const safeNodes = clamp(nodes, MIN_NODES, MAX_NODES);
       const safeMulti = clamp(multipv, MIN_LINES, MAX_LINES);
-      return this._enqueue(async () => {
-        const linesByPv = new Map();
-        let bestMove = "";
-        if (this._multipv !== safeMulti) {
-          this._post(`setoption name MultiPV value ${safeMulti}`);
-          this._multipv = safeMulti;
-        }
-        this._post("stop");
-        this._post(`position fen ${fen}`);
-        await this._sendAndWait(`go depth ${safeDepth}`, (line) => {
-          if (line.startsWith("info ") && line.includes(" score ")) {
-            const parsed = parseInfoLine(line);
-            if (parsed.score && parsed.pv?.length) {
-              linesByPv.set(parsed.multipv || 1, {
-                multipv: parsed.multipv || 1,
-                score: parsed.score,
-                pv: parsed.pv,
-                depth: parsed.depth,
-              });
+      const cacheKey = `${ENGINE_CACHE_NAMESPACE}|position|n${safeNodes}|m${safeMulti}|${fen}`;
+      return runSharedSearch(cacheKey, async () => {
+        await this.init();
+        return this._enqueue(async () => {
+          const linesByPv = new Map();
+          let bestMove = "";
+          if (this._multipv !== safeMulti) {
+            this._post(`setoption name MultiPV value ${safeMulti}`);
+            this._multipv = safeMulti;
+          }
+          this._post("stop");
+          this._post("setoption name Clear Hash");
+          this._post(`position fen ${fen}`);
+          await this._sendAndWait(`go nodes ${safeNodes}`, (line) => {
+            if (line.startsWith("info ") && line.includes(" score ")) {
+              const parsed = parseInfoLine(line);
+              if (parsed.score && parsed.pv?.length) {
+                linesByPv.set(parsed.multipv || 1, {
+                  multipv: parsed.multipv || 1,
+                  score: parsed.score,
+                  pv: parsed.pv,
+                  depth: parsed.depth,
+                  nodes: parsed.nodes,
+                });
+              }
+              for (const listener of this._listeners) listener(parsed);
             }
-            for (const listener of this._listeners) listener(parsed);
-          }
-          if (line.startsWith("bestmove ")) {
-            bestMove = line.split(/\s+/)[1] || "";
-            if (bestMove === "(none)") bestMove = "";
-            return true;
-          }
-          return false;
-        });
+            if (line.startsWith("bestmove ")) {
+              bestMove = line.split(/\s+/)[1] || "";
+              if (bestMove === "(none)") bestMove = "";
+              return true;
+            }
+            return false;
+          });
 
-        const lines = [...linesByPv.values()].sort((a, b) => a.multipv - b.multipv);
-        const top = lines[0] || { score: { cp: 0 }, pv: bestMove ? [bestMove] : [], multipv: 1 };
-        if (!bestMove && top.pv?.[0]) bestMove = top.pv[0];
-        return {
-          bestMove,
-          score: top.score || { cp: 0 },
-          pv: top.pv || [],
-          lines,
-          fen,
-          depth: safeDepth,
-          multipv: safeMulti,
-        };
+          const lines = [...linesByPv.values()].sort((a, b) => a.multipv - b.multipv);
+          const top = lines[0] || { score: { cp: 0 }, pv: bestMove ? [bestMove] : [], multipv: 1 };
+          if (!bestMove && top.pv?.[0]) bestMove = top.pv[0];
+          return {
+            bestMove,
+            score: top.score || { cp: 0 },
+            pv: top.pv || [],
+            lines,
+            fen,
+            depth: top.depth || null,
+            nodes: safeNodes,
+            multipv: safeMulti,
+          };
+        });
       });
     }
 
     /**
-     * Evaluate a specific move from fen by searching the resulting position
-     * and negating the score (side to move after the move).
+     * Evaluate a move from the original position with a root restriction.
+     * This keeps its score directly comparable with analyzeFen at the same
+     * node budget; searching the resulting position would add one effective ply.
      */
-    async evaluateMove(fen, moveUci, { depth = DEFAULT_DEPTH } = {}) {
-      await this.init();
-      const safeDepth = clamp(depth, MIN_DEPTH, MAX_DEPTH);
-      const after = await this._enqueue(async () => {
-        let score = { cp: 0 };
-        if (this._multipv !== 1) {
-          this._post("setoption name MultiPV value 1");
-          this._multipv = 1;
-        }
-        this._post("stop");
-        this._post(`position fen ${fen} moves ${moveUci}`);
-        await this._sendAndWait(`go depth ${safeDepth}`, (line) => {
-          if (line.startsWith("info ") && line.includes(" score ")) {
-            const parsed = parseInfoLine(line);
-            if (parsed.score) score = parsed.score;
+    async evaluateMove(fen, moveUci, { nodes = DEFAULT_NODES } = {}) {
+      const safeNodes = clamp(nodes, MIN_NODES, MAX_NODES);
+      const safeMove = String(moveUci || "").trim().toLowerCase();
+      if (!/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(safeMove)) {
+        throw new Error("Jugada UCI no válida");
+      }
+      const cacheKey = `${ENGINE_CACHE_NAMESPACE}|move|n${safeNodes}|${safeMove}|${fen}`;
+      return runSharedSearch(cacheKey, async () => {
+        await this.init();
+        return this._enqueue(async () => {
+          let score = { cp: 0 };
+          if (this._multipv !== 1) {
+            this._post("setoption name MultiPV value 1");
+            this._multipv = 1;
           }
-          return line.startsWith("bestmove ");
+          this._post("stop");
+          this._post("setoption name Clear Hash");
+          this._post(`position fen ${fen}`);
+          // UCI `searchmoves` consumes the remaining move tokens, so it must
+          // come after every other search limit (including `nodes`).
+          await this._sendAndWait(`go nodes ${safeNodes} searchmoves ${safeMove}`, (line) => {
+            if (line.startsWith("info ") && line.includes(" score ")) {
+              const parsed = parseInfoLine(line);
+              if (parsed.score) score = parsed.score;
+            }
+            return line.startsWith("bestmove ");
+          });
+          return score;
         });
-        return score;
       });
-      return negateScore(after);
     }
 
     async stop() {
@@ -170,21 +199,24 @@
       this.worker?.postMessage(command);
     }
 
-    _onMessage(line) {
-      if (!this._pending) return;
-      let done = false;
-      try {
-        done = Boolean(this._pending.match(line));
-      } catch (error) {
-        const pending = this._pending;
-        this._pending = null;
-        pending.reject(error);
-        return;
-      }
-      if (done) {
-        const pending = this._pending;
-        this._pending = null;
-        pending.resolve();
+    _onMessage(message) {
+      // stockfish.js may batch several UCI records in one Worker message.
+      for (const line of String(message).split(/\r?\n/).filter(Boolean)) {
+        if (!this._pending) return;
+        let done = false;
+        try {
+          done = Boolean(this._pending.match(line));
+        } catch (error) {
+          const pending = this._pending;
+          this._pending = null;
+          pending.reject(error);
+          return;
+        }
+        if (done) {
+          const pending = this._pending;
+          this._pending = null;
+          pending.resolve();
+        }
       }
     }
 
@@ -226,12 +258,48 @@
     return Math.max(min, Math.min(max, Math.round(number)));
   }
 
+  function runSharedSearch(key, search) {
+    const cached = readCache(key);
+    if (cached) return Promise.resolve(cached);
+    if (pendingSearches.has(key)) return pendingSearches.get(key);
+
+    const pending = Promise.resolve()
+      .then(search)
+      .then((result) => {
+        writeCache(key, result);
+        return result;
+      })
+      .finally(() => {
+        if (pendingSearches.get(key) === pending) pendingSearches.delete(key);
+      });
+    pendingSearches.set(key, pending);
+    return pending;
+  }
+
+  function readCache(key) {
+    if (!positionCache.has(key)) return null;
+    const value = positionCache.get(key);
+    // Refresh insertion order to make this a small LRU cache.
+    positionCache.delete(key);
+    positionCache.set(key, value);
+    return value;
+  }
+
+  function writeCache(key, value) {
+    positionCache.delete(key);
+    positionCache.set(key, value);
+    while (positionCache.size > POSITION_CACHE_LIMIT) {
+      positionCache.delete(positionCache.keys().next().value);
+    }
+  }
+
   function parseInfoLine(line) {
     const parts = line.split(/\s+/);
-    const result = { depth: null, score: null, pv: [], multipv: 1 };
+    const result = { depth: null, nodes: null, score: null, pv: [], multipv: 1 };
     for (let i = 0; i < parts.length; i += 1) {
       const token = parts[i];
       if (token === "depth") result.depth = Number(parts[++i]);
+      else if (token === "nodes") result.nodes = Number(parts[++i]);
       else if (token === "multipv") result.multipv = Number(parts[++i]);
       else if (token === "score") {
         const kind = parts[++i];
@@ -245,18 +313,14 @@
     return result;
   }
 
-  function negateScore(score) {
-    if (!score) return { cp: 0 };
-    if (typeof score.mate === "number") return { mate: -score.mate };
-    return { cp: -(score.cp || 0) };
-  }
-
   global.StockfishEngine = StockfishEngine;
-  global.STOCKFISH_DEFAULT_DEPTH = DEFAULT_DEPTH;
+  global.STOCKFISH_DEFAULT_NODES = DEFAULT_NODES;
   global.STOCKFISH_DEFAULT_LINES = DEFAULT_LINES;
-  global.STOCKFISH_MIN_DEPTH = MIN_DEPTH;
-  global.STOCKFISH_MAX_DEPTH = MAX_DEPTH;
+  global.STOCKFISH_MIN_NODES = MIN_NODES;
+  global.STOCKFISH_MAX_NODES = MAX_NODES;
   global.STOCKFISH_MIN_LINES = MIN_LINES;
   global.STOCKFISH_MAX_LINES = MAX_LINES;
+  global.STOCKFISH_ENGINE_NAME = "Stockfish 18 Lite";
+  global.STOCKFISH_ENGINE_VERSION = ENGINE_VERSION;
   global.clampEngineSetting = clamp;
 })(window);

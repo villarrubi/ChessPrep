@@ -27,7 +27,7 @@ const state = {
   datasetId: null,
   analysisEnabled: false,
   analysis: null,
-  engineDepth: null,
+  engineNodes: null,
   engineLines: null,
   liveLines: [],
   selectedLine: 1,

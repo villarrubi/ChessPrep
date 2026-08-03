@@ -250,14 +250,21 @@ El resultado debe incluir siempre el tamaño de la muestra, fuentes, rango tempo
 
 ### 8.2 Stockfish (implementado en el cliente)
 
-El visor ejecuta Stockfish en Web Workers del navegador, sin bloquear la API ni enviar posiciones a servicios externos:
+El visor ejecuta **Stockfish 18 Lite** en Web Workers del navegador, sin bloquear la API ni enviar posiciones a servicios externos. Se distribuye la compilación WebAssembly de `nmrugg/stockfish.js`, de un solo hilo y con la red NNUE ligera integrada (`stockfish@18.0.8`); funciona con el alojamiento actual y no necesita `SharedArrayBuffer`, cabeceras COOP/COEP ni un servicio de motor:
 
 - Superficie de trabajo a pantalla completa: tablero y navegación permanecen juntos; jugadas y análisis ocupan paneles con desplazamiento independiente.
+- Metadatos en orden blancas–negras y curva de evaluación bicolor con relleno respecto a la igualdad para distinguir de un vistazo qué bando tiene ventaja.
+- Reproducción automática a 1,1 segundos por jugada y nodo visual independiente para cada pieza, de modo que el arrastre no copie el fondo de la casilla.
 - Worker UCI principal → evaluación progresiva, líneas MultiPV, calidad de jugada y momentos clave.
 - Worker UCI independiente para las variantes manuales → permite arrastrar o seleccionar jugadas legales y valorar inmediatamente la última sin esperar al análisis completo.
+- La recomendación autoritativa usa siempre `MultiPV 1`; las líneas MultiPV adicionales son alternativas y no sustituyen a la mejor jugada. Los dos Workers comparten una caché LRU de resultados terminados por versión de motor, FEN, presupuesto de nodos y número de líneas.
+- Cada búsqueda recibe un presupuesto fijo entre 10.000 y 2.000.000 nodos (150.000 por defecto) y comienza con `Clear Hash`. Así, recomendación y jugada probada consumen el mismo trabajo y el orden de consultas no contamina la comparación.
+- Una jugada elegida se valora con `searchmoves` desde el mismo FEN raíz y el mismo presupuesto. `searchmoves` se emite al final del comando UCI para que no absorba el límite `nodes`; no se añade artificialmente un ply analizando la posición resultante.
 - El tablero admite movimientos legales por defecto desde cualquier posición, sin un botón de activación. El primer movimiento manual abre el análisis automáticamente; una jugada nueva, deshacer o volver a la partida cancela únicamente la evaluación manual obsoleta.
 - Las estadísticas básicas y la reproducción paso a paso no dependen del motor.
-- Sin texto generado: solo números (centipawns, clasificación de jugada).
+- Los binarios JS/WASM se sirven localmente desde `web/vendor/stockfish`; la procedencia, integridad y licencia GPL-3.0 están registradas junto a ellos.
+- La calidad de jugada se obtiene de la pérdida de probabilidad de resultado derivada de la evaluación, conservando los centipawns como dato explicativo. La precisión agregada usa una media armónica transparente para que un error grave no quede oculto entre jugadas sencillas.
+- Sin texto generado: solo evaluaciones y clasificaciones deterministas.
 
 ---
 

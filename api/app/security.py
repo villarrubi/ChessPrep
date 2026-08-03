@@ -17,7 +17,7 @@ CONTENT_SECURITY_POLICY = "; ".join(
         "object-src 'none'",
         "frame-ancestors 'none'",
         "form-action 'self'",
-        "script-src 'self'",
+        "script-src 'self' 'wasm-unsafe-eval'",
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data:",
         "font-src 'self'",

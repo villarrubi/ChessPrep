@@ -37,6 +37,7 @@ def test_security_headers_are_applied_to_api_and_web():
         response = client.get(path)
         assert response.status_code == 200
         assert "default-src 'self'" in response.headers["content-security-policy"]
+        assert "script-src 'self' 'wasm-unsafe-eval'" in response.headers["content-security-policy"]
         assert response.headers["x-content-type-options"] == "nosniff"
         assert response.headers["x-frame-options"] == "DENY"
         assert response.headers["referrer-policy"] == "no-referrer"
@@ -62,11 +63,30 @@ def test_frontend_feature_modules_are_served():
         assert response.text.startswith('"use strict";')
 
 
+def test_stockfish_18_lite_worker_and_wasm_are_served_locally():
+    engine_script = client.get("/js/stockfishEngine.js").text
+    worker = client.get("/vendor/stockfish/stockfish-18-lite-single.js")
+    wasm = client.get("/vendor/stockfish/stockfish-18-lite-single.wasm")
+
+    assert worker.status_code == 200
+    assert "Stockfish.js 18" in worker.text[:500]
+    assert wasm.status_code == 200
+    assert len(wasm.content) == 7_295_411
+    assert wasm.headers["content-type"].startswith("application/wasm")
+    assert client.get("/vendor/stockfish/stockfish.js").status_code == 404
+    assert 'const WORKER_URL = "/vendor/stockfish/stockfish-18-lite-single.js"' in engine_script
+    assert 'const ENGINE_VERSION = "18-lite-single-18.0.8"' in engine_script
+    assert 'const ENGINE_CACHE_NAMESPACE = `stockfish-${ENGINE_VERSION}`' in engine_script
+    assert 'global.STOCKFISH_ENGINE_NAME = "Stockfish 18 Lite"' in engine_script
+    assert 'global.STOCKFISH_DEFAULT_NODES = DEFAULT_NODES' in engine_script
+    assert 'id="analysis-nodes" min="10" max="2000"' in client.get("/").text
+
+
 def test_loader_cycles_all_pieces_without_disabling_its_timer():
     index = client.get("/").text
     script = client.get("/app.js").text
 
-    assert "/app.js?v=20260803-fullscreen-viewer1" in index
+    assert "/app.js?v=20260803-stockfish18-lite1" in index
     assert 'const LOADER_PIECES = ["♙", "♘", "♗", "♖", "♕", "♔"];' in script
     assert "const LOADER_INTERVAL_MS = 450;" in script
     assert "window.setInterval(advanceLoaderPiece, LOADER_INTERVAL_MS)" in script
@@ -82,7 +102,7 @@ def test_language_switcher_and_elo_calculator_are_available():
     assert 'id="language-button"' in index
     assert 'id="language-menu"' in index
     assert index.count('data-language="') == 5
-    assert "/i18n.js?v=20260803-fullscreen-viewer1" in index
+    assert "/i18n.js?v=20260803-stockfish18-lite1" in index
     assert 'const STORAGE_KEY = "chessprep_language";' in translations
     assert '{ code: "es"' in translations
     assert '{ code: "en"' in translations
@@ -196,7 +216,7 @@ def test_manual_moves_are_draggable_and_use_an_independent_engine():
     translations = client.get("/i18n.js").text
     styles = client.get("/styles.css").text
 
-    assert "/js/exploreMode.js?v=20260803-fullscreen-viewer1" in index
+    assert "/js/exploreMode.js?v=20260803-stockfish18-lite1" in index
     assert 'id="explore-toggle"' not in index
     assert "exploreEngine = new global.StockfishEngine()" in viewer_script
     assert "new global.ExploreMode(exploreEngine)" in viewer_script
@@ -206,6 +226,10 @@ def test_manual_moves_are_draggable_and_use_an_independent_engine():
     assert "toggleExploreMode" not in viewer_script
     assert "bindExploreBoardEvents()" in viewer_script
     assert 'draggable="true"' in viewer_script
+    assert "const PLAYBACK_INTERVAL_MS = 1100;" in viewer_script
+    assert "}, PLAYBACK_INTERVAL_MS);" in viewer_script
+    assert '<span class="board-piece"${draggable}>' in viewer_script
+    assert 'event.target.closest(".board-piece")' in viewer_script
     assert "movePiece(from, to)" in explore_script
     assert "setPosition(fen, ply)" in explore_script
     assert 'typeof this.onMove === "function"' in explore_script
@@ -214,11 +238,40 @@ def test_manual_moves_are_draggable_and_use_an_independent_engine():
     assert "this._initPromise === guardedPromise" in engine_script
     assert '"analysis.manualHint"' in translations
     assert '.board-square.drag-over' in styles
+    assert '.board-piece[draggable="true"]' in styles
+    assert '.board-square[draggable="true"]' not in styles
+
+
+def test_stockfish_recommendation_and_manual_grading_share_one_reference():
+    viewer_script = client.get("/js/gameViewerController.js").text
+    engine_script = client.get("/js/stockfishEngine.js").text
+    analysis_script = client.get("/js/gameAnalysis.js").text
+    quality_script = client.get("/js/moveQuality.js").text
+    translations = client.get("/i18n.js").text
+
+    assert "const positionCache = new Map()" in engine_script
+    assert "const pendingSearches = new Map()" in engine_script
+    assert "return runSharedSearch(cacheKey" in engine_script
+    assert "go nodes ${safeNodes} searchmoves ${safeMove}" in engine_script
+    assert "go searchmoves ${safeMove} nodes ${safeNodes}" not in engine_script
+    assert 'this._post("setoption name Clear Hash")' in engine_script
+    assert "position fen ${fen} moves ${moveUci}" not in engine_script
+    assert "function mergeReferenceLines" in viewer_script
+    assert "engine.analyzeFen(fen, { nodes, multipv: 1 })" in viewer_script
+    assert "mergeReferenceLines(fen, reference, alternatives, multipv)" in viewer_script
+    assert "state.analysis?.plies?.[state.ply - 1]?.bestUci" not in viewer_script
+    assert 't("analysis.bestLine")' in viewer_script
+    assert '"analysis.bestLine": "Mejor línea"' in translations
+    assert '"viewer.nodes": "Nodos (k)"' in translations
+    assert "MoveQuality.winChanceLoss(best.score, playedScoreStm)" in analysis_script
+    assert "MoveQuality.classifyWinLoss(winLoss" in analysis_script
+    assert "function accuracyFromWinLosses" in quality_script
 
 
 def test_game_viewer_is_a_fullscreen_workspace_with_independent_panels():
     index = client.get("/").text
     styles = client.get("/styles.css").text
+    viewer_script = client.get("/js/gameViewerController.js").text
 
     assert '<div class="viewer-backdrop" id="viewer-dialog" hidden>' in index
     assert 'class="dialog-backdrop viewer-backdrop"' not in index
@@ -226,6 +279,7 @@ def test_game_viewer_is_a_fullscreen_workspace_with_independent_panels():
     assert 'class="viewer-body"' in index
     assert 'class="viewer-moves-pane"' in index
     assert 'id="viewer-analysis-title"' in index
+    assert 'id="eval-curve" width="480" height="72"' in index
     assert 'class="viewer-scroll-area"' not in index
     board_start = index.index('class="viewer-board-column"')
     controls = index.index('class="viewer-controls"')
@@ -235,6 +289,12 @@ def test_game_viewer_is_a_fullscreen_workspace_with_independent_panels():
     assert "#viewer-dialog.analysis-on .viewer-info" in styles
     assert ".viewer-moves-pane { overflow: hidden;" in styles
     assert ".analysis-body { min-height: 0;" in styles
+    assert '`${game.white} — ${game.black}`' in viewer_script
+    assert '`${game.target_player} — ${opponent}`' not in viewer_script
+    assert 'fillEvaluationArea("rgba(211, 169, 73, .34)", 0, middle)' in viewer_script
+    assert 'fillEvaluationArea("rgba(16, 35, 31, .24)", middle, height)' in viewer_script
+    assert 'ctx.fillText("♙", 6, 11)' in viewer_script
+    assert 'ctx.fillText("♟", 6, height - 11)' in viewer_script
 
 
 def test_game_result_badges_keep_their_layout_and_use_stable_color_markers():

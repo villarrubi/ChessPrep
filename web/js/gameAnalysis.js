@@ -11,42 +11,42 @@
       this.onUpdate = null;
     }
 
-    cacheKey(game, depth) {
-      return `${game.source}:${game.id}:d${depth}`;
+    cacheKey(game, nodes) {
+      return `${game.source}:${game.id}:n${nodes}`;
     }
 
-    getCached(game, depth) {
-      return this.cache.get(this.cacheKey(game, depth)) || null;
+    getCached(game, nodes) {
+      return this.cache.get(this.cacheKey(game, nodes)) || null;
     }
 
     async ensureLibs() {
       await loadChessLibrary();
     }
 
-    async start(game, { onUpdate, depth } = {}) {
-      const analysisDepth = global.clampEngineSetting(
-        depth ?? global.STOCKFISH_DEFAULT_DEPTH,
-        global.STOCKFISH_MIN_DEPTH,
-        global.STOCKFISH_MAX_DEPTH,
+    async start(game, { onUpdate, nodes } = {}) {
+      const analysisNodes = global.clampEngineSetting(
+        nodes ?? global.STOCKFISH_DEFAULT_NODES,
+        global.STOCKFISH_MIN_NODES,
+        global.STOCKFISH_MAX_NODES,
       );
       await this.ensureLibs();
       await this.engine.init();
       this.onUpdate = onUpdate || null;
       this.aborted = false;
-      this.activeKey = this.cacheKey(game, analysisDepth);
+      this.activeKey = this.cacheKey(game, analysisNodes);
 
-      let analysis = this.getCached(game, analysisDepth);
+      let analysis = this.getCached(game, analysisNodes);
       if (!analysis) {
         analysis = {
           key: this.activeKey,
           status: "running",
-          depth: analysisDepth,
+          nodes: analysisNodes,
           done: 0,
           total: game.moves_uci.length,
           plies: new Array(game.moves_uci.length).fill(null),
           evals: new Array(game.fens.length).fill(null),
-          whiteCpls: [],
-          blackCpls: [],
+          whiteWinLosses: [],
+          blackWinLosses: [],
           whiteAccuracy: null,
           blackAccuracy: null,
           keyMoments: [],
@@ -69,7 +69,7 @@
 
       try {
         for (let i = 0; i < game.moves_uci.length; i += 1) {
-          if (this.aborted || this.activeKey !== this.cacheKey(game, analysisDepth)) break;
+          if (this.aborted || this.activeKey !== this.cacheKey(game, analysisNodes)) break;
           if (analysis.plies[i]) {
             analysis.done = Math.max(analysis.done, i + 1);
             continue;
@@ -81,8 +81,8 @@
           const sideToMove = fenBefore.split(" ")[1] || "w";
 
           // Full-game quality uses MultiPV 1; live lines are probed separately.
-          const best = await this.engine.analyzeFen(fenBefore, { depth: analysisDepth, multipv: 1 });
-          if (this.aborted || this.activeKey !== this.cacheKey(game, analysisDepth)) break;
+          const best = await this.engine.analyzeFen(fenBefore, { nodes: analysisNodes, multipv: 1 });
+          if (this.aborted || this.activeKey !== this.cacheKey(game, analysisNodes)) break;
 
           const bestWhite = toWhitePov(best.score, sideToMove);
           analysis.evals[i] = bestWhite;
@@ -91,16 +91,21 @@
           if (playedUci === best.bestMove) {
             playedScoreStm = best.score;
           } else {
-            playedScoreStm = await this.engine.evaluateMove(fenBefore, playedUci, { depth: analysisDepth });
-            if (this.aborted || this.activeKey !== this.cacheKey(game, analysisDepth)) break;
+            playedScoreStm = await this.engine.evaluateMove(fenBefore, playedUci, { nodes: analysisNodes });
+            if (this.aborted || this.activeKey !== this.cacheKey(game, analysisNodes)) break;
           }
 
           const playedWhite = toWhitePov(playedScoreStm, sideToMove);
           const cpl = global.MoveQuality.centipawnLoss(best.score, playedScoreStm, sideToMove);
+          const winLoss = global.MoveQuality.winChanceLoss(best.score, playedScoreStm);
           const missedMate = typeof best.score?.mate === "number" && best.score.mate > 0 &&
             !(typeof playedScoreStm?.mate === "number" && playedScoreStm.mate > 0);
           const allowedMate = typeof playedScoreStm?.mate === "number" && playedScoreStm.mate < 0;
-          const judgment = global.MoveQuality.classifyCpl(cpl, { missedMate, allowedMate });
+          const judgment = global.MoveQuality.classifyWinLoss(winLoss, {
+            isBest: playedUci === best.bestMove,
+            missedMate,
+            allowedMate,
+          });
           const bestSan = uciToSan(fenBefore, best.bestMove);
 
           analysis.plies[i] = {
@@ -113,6 +118,7 @@
             scoreBefore: bestWhite,
             scorePlayed: playedWhite,
             cpl,
+            winLoss,
             judgment,
             glyph: global.MoveQuality.judgmentGlyph(judgment),
             label: global.MoveQuality.judgmentLabel(judgment),
@@ -121,19 +127,19 @@
           // Eval after move ≈ played score from white POV (position after move)
           analysis.evals[i + 1] = playedWhite;
 
-          if (sideToMove === "w") analysis.whiteCpls.push(cpl);
-          else analysis.blackCpls.push(cpl);
+          if (sideToMove === "w") analysis.whiteWinLosses.push(winLoss);
+          else analysis.blackWinLosses.push(winLoss);
 
           analysis.done = i + 1;
-          analysis.whiteAccuracy = global.MoveQuality.accuracyFromCpls(analysis.whiteCpls);
-          analysis.blackAccuracy = global.MoveQuality.accuracyFromCpls(analysis.blackCpls);
+          analysis.whiteAccuracy = global.MoveQuality.accuracyFromWinLosses(analysis.whiteWinLosses);
+          analysis.blackAccuracy = global.MoveQuality.accuracyFromWinLosses(analysis.blackWinLosses);
           analysis.keyMoments = global.MoveQuality.buildKeyMoments(analysis.plies.filter(Boolean));
           this._emit(analysis);
         }
 
         if (this.aborted) {
           analysis.status = analysis.done >= analysis.total ? "complete" : "paused";
-        } else if (this.activeKey === this.cacheKey(game, analysisDepth) && analysis.done >= analysis.total) {
+        } else if (this.activeKey === this.cacheKey(game, analysisNodes) && analysis.done >= analysis.total) {
           analysis.status = "complete";
         } else {
           analysis.status = "paused";

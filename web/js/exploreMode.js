@@ -38,12 +38,12 @@
       this._emit();
     }
 
-    _depth() {
+    _nodes() {
       const settings = typeof this.getSettings === "function" ? this.getSettings() : null;
       return global.clampEngineSetting(
-        settings?.depth ?? global.STOCKFISH_DEFAULT_DEPTH,
-        global.STOCKFISH_MIN_DEPTH,
-        global.STOCKFISH_MAX_DEPTH,
+        settings?.nodes ?? global.STOCKFISH_DEFAULT_NODES,
+        global.STOCKFISH_MIN_NODES,
+        global.STOCKFISH_MAX_NODES,
       );
     }
 
@@ -160,16 +160,18 @@
         if (evaluationId !== this.evaluationId || !this.active) return;
 
         const sideToMove = fenBefore.split(" ")[1] || "w";
-        const depth = this._depth();
-        const best = await this.engine.analyzeFen(fenBefore, { depth, multipv: 1 });
+        const nodes = this._nodes();
+        const best = await this.engine.analyzeFen(fenBefore, { nodes, multipv: 1 });
         if (evaluationId !== this.evaluationId || !this.active) return;
         let playedScore = best.score;
         if (triedUci !== best.bestMove) {
-          playedScore = await this.engine.evaluateMove(fenBefore, triedUci, { depth });
+          playedScore = await this.engine.evaluateMove(fenBefore, triedUci, { nodes });
         }
         if (evaluationId !== this.evaluationId || !this.active) return;
         const cpl = global.MoveQuality.centipawnLoss(best.score, playedScore, sideToMove);
-        const judgment = global.MoveQuality.classifyCpl(cpl, {
+        const winLoss = global.MoveQuality.winChanceLoss(best.score, playedScore);
+        const judgment = global.MoveQuality.classifyWinLoss(winLoss, {
+          isBest: triedUci === best.bestMove,
           missedMate: typeof best.score?.mate === "number" && best.score.mate > 0 &&
             !(typeof playedScore?.mate === "number" && playedScore.mate > 0),
           allowedMate: typeof playedScore?.mate === "number" && playedScore.mate < 0,
@@ -182,6 +184,7 @@
           glyph: global.MoveQuality.judgmentGlyph(judgment),
           label: global.MoveQuality.judgmentLabel(judgment),
           cpl,
+          winLoss,
           bestUci: best.bestMove,
           bestSan: global.uciToSan(fenBefore, best.bestMove),
           score: global.toWhitePov(playedScore, sideToMove),

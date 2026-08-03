@@ -1,6 +1,8 @@
 "use strict";
 
 (function(global) {
+  const PLAYBACK_INTERVAL_MS = 1100;
+
   // Stockfish, playback and board rendering form one cohesive viewer feature.
   // Its lower-level helpers remain private behind this controller facade.
   let state;
@@ -42,11 +44,11 @@
       exploreEngine = new global.StockfishEngine();
       gameAnalysis = new global.GameAnalysisController(engine);
       explore = new global.ExploreMode(exploreEngine);
-      state.engineDepth = loadEngineSetting(
-        "chessprep_engine_depth",
-        global.STOCKFISH_DEFAULT_DEPTH,
-        global.STOCKFISH_MIN_DEPTH,
-        global.STOCKFISH_MAX_DEPTH,
+      state.engineNodes = loadEngineSetting(
+        "chessprep_engine_nodes",
+        global.STOCKFISH_DEFAULT_NODES,
+        global.STOCKFISH_MIN_NODES,
+        global.STOCKFISH_MAX_NODES,
       );
       state.engineLines = loadEngineSetting(
         "chessprep_engine_lines",
@@ -64,11 +66,11 @@
       $("#explore-undo").addEventListener("click", undoManualMove);
       $("#explore-exit").addEventListener("click", resetManualVariation);
       $("#eval-curve").addEventListener("click", handleEvalCurveClick);
-      ["analysis-depth", "analysis-lines"].forEach((id) => {
+      ["analysis-nodes", "analysis-lines"].forEach((id) => {
         const input = document.getElementById(id);
         input.addEventListener("change", () => {
           applyEngineSettingsFromInputs({
-            restartGameAnalysis: id === "analysis-depth"
+            restartGameAnalysis: id === "analysis-nodes"
           });
         });
         input.addEventListener("keydown", (event) => {
@@ -150,7 +152,7 @@
 
   function getEngineSettings() {
     return {
-      depth: state.engineDepth,
+      nodes: state.engineNodes,
       lines: state.engineLines
     };
   }
@@ -182,8 +184,8 @@
 
   function renderViewerMeta() {
     const game = state.viewerGame;
-    const opponent = game.player_color === "white" ? game.black : game.white;
-    $("#viewer-title").textContent = `${game.target_player} — ${opponent}`;
+    // Keep the conventional score-sheet order regardless of which player was searched.
+    $("#viewer-title").textContent = `${game.white} — ${game.black}`;
     const tags = $("#viewer-tags");
     tags.replaceChildren(...[game.eco, game.opening, game.result, game.game_type.toUpperCase(), shortDate(game.date)]
       .filter(Boolean)
@@ -296,8 +298,9 @@
       const fileCoord = rowIndex === 7 ? `<span class="coord file">${files[colIndex]}</span>` : "";
       const rankCoord = colIndex === 0 ? `<span class="coord rank">${ranks[rowIndex]}</span>` : "";
       const draggable = explore.active && piece && explore.canMoveFrom(squareName) ? ' draggable="true"' : "";
+      const pieceNode = piece ? `<span class="board-piece"${draggable}>${PIECES[piece] || ""}</span>` : "";
       html +=
-        `<span class="${classes}" data-square="${squareName}"${draggable}>${fileCoord}${rankCoord}${PIECES[piece] || ""}</span>`;
+        `<span class="${classes}" data-square="${squareName}">${fileCoord}${rankCoord}${pieceNode}</span>`;
     }));
     $("#chessboard").innerHTML = html;
     if (explore.active) bindExploreBoardEvents();
@@ -331,7 +334,8 @@
         suppressBoardClick = true;
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", from);
-        square.classList.add("dragging", "selected");
+        event.target.closest(".board-piece")?.classList.add("dragging");
+        square.classList.add("selected");
         targets.forEach((target) => {
           board.querySelector(`[data-square="${target}"]`)?.classList.add("legal-target", "drag-target");
         });
@@ -361,8 +365,9 @@
   function clearBoardDragState() {
     draggedSquare = null;
     $$(".board-square", $("#chessboard")).forEach((square) => {
-      square.classList.remove("dragging", "drag-target", "drag-over", "selected", "legal-target");
+      square.classList.remove("drag-target", "drag-over", "selected", "legal-target");
     });
+    $$(".board-piece.dragging", $("#chessboard")).forEach((piece) => piece.classList.remove("dragging"));
   }
 
   function setPly(value) {
@@ -397,7 +402,7 @@
     state.playTimer = setInterval(() => {
       if (state.ply >= state.viewerGame.moves.length) return stopPlaying();
       setPly(state.ply + 1);
-    }, 700);
+    }, PLAYBACK_INTERVAL_MS);
   }
 
   function stopPlaying() {
@@ -425,9 +430,9 @@
   }
 
   function syncEngineSettingInputs() {
-    const depthInput = $("#analysis-depth");
+    const nodesInput = $("#analysis-nodes");
     const linesInput = $("#analysis-lines");
-    if (depthInput) depthInput.value = String(state.engineDepth);
+    if (nodesInput) nodesInput.value = String(Math.round(state.engineNodes / 1000));
     if (linesInput) linesInput.value = String(state.engineLines);
   }
 
@@ -470,7 +475,7 @@
     }
     if (analysis.status === "complete") {
       el.textContent = t("dynamic.engineReady", {
-        depth: state.engineDepth,
+        nodes: formatNumber(state.engineNodes / 1000),
         count: state.engineLines,
         lines: t(state.engineLines === 1 ? "dynamic.line" : "dynamic.lines")
       });
@@ -479,7 +484,7 @@
     el.textContent = t("dynamic.engineAnalysing", {
       done: analysis.done,
       total: analysis.total,
-      depth: state.engineDepth
+      nodes: formatNumber(state.engineNodes / 1000)
     });
   }
 
@@ -494,6 +499,13 @@
     if (explore.canUndo()) return explore.lastTry || null;
     if (!state.ply || !state.analysis?.plies) return null;
     return state.analysis.plies[state.ply - 1] || null;
+  }
+
+  function qualityLossText(judgment) {
+    if (!judgment) return "";
+    const cp = `${Math.round(Number(judgment.cpl) || 0)} cp`;
+    if (!Number.isFinite(Number(judgment.winLoss))) return cp;
+    return `${t("analysis.winLoss")} ${formatNumber(judgment.winLoss)} pp · ${cp}`;
   }
 
   function renderAnalysisSummary() {
@@ -519,7 +531,7 @@
       if (explore.lastTry?.status === "analyzing") moveLine = t("analysis.evaluatingMove");
       else if (explore.lastTry?.status === "done") {
         moveLine =
-          `${t("analysis.yourMove")} <strong>${escapeHtml(explore.lastTry.san)}</strong>${explore.lastTry.glyph ? ` <span class="judgment ${escapeHtml(explore.lastTry.judgment)}">${escapeHtml(explore.lastTry.glyph)}</span>` : ""} · ${t("quality.best")} <strong>${escapeHtml(explore.lastTry.bestSan || "—")}</strong> · Δ ${explore.lastTry.cpl} cp · <span class="judgment ${escapeHtml(explore.lastTry.judgment)}">${escapeHtml(t(`quality.${explore.lastTry.judgment}`))}</span>`;
+          `${t("analysis.yourMove")} <strong>${escapeHtml(explore.lastTry.san)}</strong>${explore.lastTry.glyph ? ` <span class="judgment ${escapeHtml(explore.lastTry.judgment)}">${escapeHtml(explore.lastTry.glyph)}</span>` : ""} · ${t("quality.best")} <strong>${escapeHtml(explore.lastTry.bestSan || "—")}</strong> · ${escapeHtml(qualityLossText(explore.lastTry))} · <span class="judgment ${escapeHtml(explore.lastTry.judgment)}">${escapeHtml(t(`quality.${explore.lastTry.judgment}`))}</span>`;
       } else if (explore.lastTry?.status === "error") {
         moveLine = escapeHtml(explore.lastTry.error || t("analysis.evaluateError"));
       } else {
@@ -527,7 +539,7 @@
       }
     } else if (judgment) {
       moveLine =
-        `${t("analysis.move")} <strong>${escapeHtml(judgment.san)}</strong>${judgment.glyph ? ` <span class="judgment ${escapeHtml(judgment.judgment)}">${escapeHtml(judgment.glyph)}</span>` : ""} · ${t("quality.best")} <strong>${escapeHtml(judgment.bestSan || "—")}</strong> · Δ ${judgment.cpl} cp · <span class="judgment ${escapeHtml(judgment.judgment)}">${escapeHtml(t(`quality.${judgment.judgment}`))}</span>`;
+        `${t("analysis.move")} <strong>${escapeHtml(judgment.san)}</strong>${judgment.glyph ? ` <span class="judgment ${escapeHtml(judgment.judgment)}">${escapeHtml(judgment.glyph)}</span>` : ""} · ${t("quality.best")} <strong>${escapeHtml(judgment.bestSan || "—")}</strong> · ${escapeHtml(qualityLossText(judgment))} · <span class="judgment ${escapeHtml(judgment.judgment)}">${escapeHtml(t(`quality.${judgment.judgment}`))}</span>`;
     } else if (state.ply > 0 && state.analysis && state.analysis.done < state.ply) {
       moveLine = t("analysis.pendingMove");
     }
@@ -586,6 +598,48 @@
     return state.liveLines.find((line) => line.multipv === state.selectedLine) || state.liveLines[0] || null;
   }
 
+  function mergeReferenceLines(fen, reference, alternatives, requestedLines) {
+    const referenceMove = reference.bestMove || reference.pv?.[0] || "";
+    const referencePv = reference.pv?.length ? reference.pv : (referenceMove ? [referenceMove] : []);
+    const lines = [{
+      multipv: 1,
+      score: reference.score,
+      pv: referencePv,
+      depth: reference.depth,
+      nodes: reference.nodes,
+    }];
+
+    if (requestedLines > 1) {
+      const distinctAlternatives = (alternatives?.lines || [])
+        .filter((line) => line.pv?.[0] && line.pv[0] !== referenceMove)
+        .slice(0, requestedLines - 1);
+      distinctAlternatives.forEach((line, index) => {
+        lines.push({ ...line, multipv: index + 2 });
+      });
+    }
+
+    return lines.map((line) => ({
+      ...line,
+      sanPv: pvToSan(fen, line.pv),
+      moveUci: line.pv?.[0] || "",
+    }));
+  }
+
+  function commitLiveLines(fen, lines) {
+    state.liveLines = lines;
+    if (!state.liveLines.some((line) => line.multipv === state.selectedLine)) {
+      state.selectedLine = 1;
+    }
+    renderLiveLines();
+    renderBoardArrow();
+    if (state.liveLines[0]?.score && state.analysis?.evals) {
+      const side = fen.split(" ")[1] || "w";
+      state.analysis.evals[state.ply] = toWhitePov(state.liveLines[0].score, side);
+      renderEvalBar();
+      renderAnalysisSummary();
+    }
+  }
+
   function renderLiveLines() {
     const el = $("#analysis-lines-list");
     if (!el) return;
@@ -599,7 +653,7 @@
     }
     if (!state.liveLines.length) {
       el.innerHTML =
-        `<div class="analysis-line-empty">${escapeHtml(t("dynamic.calculatingLines", { count: state.engineLines, lines: t(state.engineLines === 1 ? "dynamic.line" : "dynamic.lines"), depth: state.engineDepth }))}</div>`;
+        `<div class="analysis-line-empty">${escapeHtml(t("dynamic.calculatingLines", { count: state.engineLines, lines: t(state.engineLines === 1 ? "dynamic.line" : "dynamic.lines"), nodes: formatNumber(state.engineNodes / 1000) }))}</div>`;
       return;
     }
     const side = (state.viewerGame?.fens[state.ply] || "").split(" ")[1] || "w";
@@ -608,8 +662,12 @@
       const evalText = MoveQuality.formatEval(whiteScore);
       const pvText = (line.sanPv?.length ? line.sanPv : line.pv).slice(0, 10).join(" ");
       const active = line.multipv === state.selectedLine ? "active" : "";
-      return `<button type="button" class="analysis-line ${active}" data-multipv="${line.multipv}">` +
-        `<span class="line-rank">${line.multipv}</span>` +
+      const isBest = line.multipv === 1;
+      const lineLabel = isBest
+        ? t("analysis.bestLine")
+        : t("analysis.alternativeLine", { number: line.multipv });
+      return `<button type="button" class="analysis-line ${active}" data-multipv="${line.multipv}" aria-label="${escapeHtml(lineLabel)}" title="${escapeHtml(lineLabel)}">` +
+        `<span class="line-rank">${isBest ? "★" : line.multipv}</span>` +
         `<span class="line-eval">${escapeHtml(evalText)}</span>` +
         `<span class="line-pv">${escapeHtml(pvText)}</span>` +
         `</button>`;
@@ -627,41 +685,29 @@
     if (!state.analysisEnabled || !state.viewerGame || explore.canUndo()) return;
     const probeId = ++state.liveProbeId;
     const fen = state.viewerGame.fens[state.ply];
-    const depth = state.engineDepth;
+    const nodes = state.engineNodes;
     const multipv = state.engineLines;
     state.liveLines = [];
     renderLiveLines();
     try {
       await loadChessScript();
-      const result = await engine.analyzeFen(fen, {
-        depth,
-        multipv
-      });
+      // MultiPV can rank close moves differently from a single-PV search.
+      // The single-PV result is the authoritative recommendation and is also
+      // reused when a manual move is graded.
+      const reference = await engine.analyzeFen(fen, { nodes, multipv: 1 });
       if (probeId !== state.liveProbeId || !state.analysisEnabled) return;
-      state.liveLines = (result.lines || []).map((line) => ({
-        ...line,
-        sanPv: pvToSan(fen, line.pv),
-        moveUci: line.pv?.[0] || "",
-      }));
-      if (!state.liveLines.some((line) => line.multipv === state.selectedLine)) {
-        state.selectedLine = state.liveLines[0]?.multipv || 1;
-      }
-      renderLiveLines();
-      renderBoardArrow();
-      // Prefer live eval for the current position bar when available.
-      if (state.liveLines[0]?.score) {
-        const side = fen.split(" ")[1] || "w";
-        if (state.analysis?.evals) {
-          state.analysis.evals[state.ply] = toWhitePov(state.liveLines[0].score, side);
-          renderEvalBar();
-          renderAnalysisSummary();
-        }
+      commitLiveLines(fen, mergeReferenceLines(fen, reference, null, 1));
+
+      if (multipv > 1) {
+        const alternatives = await engine.analyzeFen(fen, { nodes, multipv });
+        if (probeId !== state.liveProbeId || !state.analysisEnabled) return;
+        commitLiveLines(fen, mergeReferenceLines(fen, reference, alternatives, multipv));
       }
     } catch (error) {
       if (probeId !== state.liveProbeId) return;
       if (error.message === "Análisis cancelado" || error.message === "Motor detenido") return;
       const el = $("#analysis-lines-list");
-      if (el) el.innerHTML =
+      if (el && !state.liveLines.length) el.innerHTML =
         `<div class="analysis-line-empty">${escapeHtml(error.message || t("dynamic.linesError"))}</div>`;
     }
   }
@@ -676,8 +722,6 @@
     let uci = "";
     const live = selectedLiveLine();
     if (live?.moveUci) uci = live.moveUci;
-    else if (state.ply > 0) uci = state.analysis?.plies?.[state.ply - 1]?.bestUci || "";
-    else uci = state.analysis?.plies?.[0]?.bestUci || "";
     if (!uci || uci.length < 4) {
       svg.innerHTML = "";
       return;
@@ -713,14 +757,27 @@
     const ctx = canvas.getContext("2d");
     const width = canvas.width;
     const height = canvas.height;
+    const middle = height / 2;
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = "#f6f3ec";
-    ctx.fillRect(0, 0, width, height);
-    ctx.strokeStyle = "#dcd8cd";
+    ctx.fillStyle = "#faf7ef";
+    ctx.fillRect(0, 0, width, middle);
+    ctx.fillStyle = "#dce5e1";
+    ctx.fillRect(0, middle, width, middle);
+    ctx.strokeStyle = "rgba(16, 35, 31, .28)";
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(0, height / 2);
-    ctx.lineTo(width, height / 2);
+    ctx.moveTo(0, middle);
+    ctx.lineTo(width, middle);
     ctx.stroke();
+
+    ctx.save();
+    ctx.font = 'bold 12px "Segoe UI Symbol", serif';
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(108, 89, 49, .62)";
+    ctx.fillText("♙", 6, 11);
+    ctx.fillStyle = "rgba(16, 35, 31, .7)";
+    ctx.fillText("♟", 6, height - 11);
+    ctx.restore();
 
     const evals = state.analysis?.evals;
     if (!evals?.length) return;
@@ -737,8 +794,25 @@
     }).filter(Boolean);
     if (points.length < 2) return;
 
+    const fillEvaluationArea = (color, top, bottom) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, top, width, bottom - top);
+      ctx.clip();
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, middle);
+      points.forEach((point) => ctx.lineTo(point.x, point.y));
+      ctx.lineTo(points[points.length - 1].x, middle);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.restore();
+    };
+    fillEvaluationArea("rgba(211, 169, 73, .34)", 0, middle);
+    fillEvaluationArea("rgba(16, 35, 31, .24)", middle, height);
+
     ctx.strokeStyle = "#1c3932";
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.8;
     ctx.beginPath();
     points.forEach((point, index) => {
       if (index === 0) ctx.moveTo(point.x, point.y);
@@ -753,6 +827,17 @@
       ctx.moveTo(x, 0);
       ctx.lineTo(x, height);
       ctx.stroke();
+
+      const current = points.find((point) => point.index === state.ply);
+      if (current) {
+        ctx.beginPath();
+        ctx.arc(current.x, current.y, 3.6, 0, Math.PI * 2);
+        ctx.fillStyle = current.y <= middle ? "#faf7ef" : "#10231f";
+        ctx.fill();
+        ctx.strokeStyle = "#d9673e";
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+      }
     }
   }
 
@@ -785,10 +870,10 @@
     engine.terminate();
     void probeLiveLines();
     void gameAnalysis.start(state.viewerGame, {
-        depth: state.engineDepth,
+        nodes: state.engineNodes,
         onUpdate: (analysis) => {
           if (!state.analysisEnabled || !state.viewerGame) return;
-          if (analysis.key !== `${state.viewerGame.source}:${state.viewerGame.id}:d${state.engineDepth}`)
+          if (analysis.key !== `${state.viewerGame.source}:${state.viewerGame.id}:n${state.engineNodes}`)
             return;
           state.analysis = analysis;
           renderAnalysisStatus();
@@ -815,34 +900,34 @@
   async function applyEngineSettingsFromInputs({
     restartGameAnalysis = false
   } = {}) {
-    const nextDepth = clampEngineSetting(
-      $("#analysis-depth")?.value,
-      STOCKFISH_MIN_DEPTH,
-      STOCKFISH_MAX_DEPTH,
+    const nextNodes = clampEngineSetting(
+      Number($("#analysis-nodes")?.value) * 1000,
+      STOCKFISH_MIN_NODES,
+      STOCKFISH_MAX_NODES,
     );
     const nextLines = clampEngineSetting(
       $("#analysis-lines")?.value,
       STOCKFISH_MIN_LINES,
       STOCKFISH_MAX_LINES,
     );
-    const depthChanged = nextDepth !== state.engineDepth;
+    const nodesChanged = nextNodes !== state.engineNodes;
     const linesChanged = nextLines !== state.engineLines;
-    state.engineDepth = nextDepth;
+    state.engineNodes = nextNodes;
     state.engineLines = nextLines;
-    saveEngineSetting("chessprep_engine_depth", nextDepth);
+    saveEngineSetting("chessprep_engine_nodes", nextNodes);
     saveEngineSetting("chessprep_engine_lines", nextLines);
     syncEngineSettingInputs();
 
     if (!state.analysisEnabled || !state.viewerGame) return;
     if (explore.canUndo()) return;
-    if (depthChanged && restartGameAnalysis) {
+    if (nodesChanged && restartGameAnalysis) {
       gameAnalysis.stop();
       state.analysis = null;
       engine.terminate();
       setAnalysisEnabled(true);
       return;
     }
-    if (depthChanged || linesChanged) {
+    if (nodesChanged || linesChanged) {
       state.selectedLine = 1;
       probeLiveLines();
     }
