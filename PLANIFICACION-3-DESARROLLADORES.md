@@ -1,5 +1,18 @@
 # ChessPrep — Desglose de tareas para 3 desarrolladores
 
+> **Documento histórico.** Este archivo conserva la planificación inicial y no describe necesariamente la implementación actual. En particular, la propuesta de Next.js, TypeScript y Tailwind se sustituyó por una SPA sin proceso de build. La arquitectura vigente se documenta en [README.md](./README.md) y [Diseño tecnico.md](./Diseño%20tecnico.md).
+
+## Estado actual de la implementación
+
+- Frontend estático con controladores independientes para dossier, visor, OTB, PGN y calculadora Elo.
+- Backend FastAPI separado en configuración, seguridad, routers, servicios y proveedores con dependencias explícitas.
+- Lichess, Chess.com, FIDE, Info64, importación PGN y Stockfish en cliente implementados.
+- 49 pruebas automatizadas superadas tras la refactorización.
+- Arranque directo con Python validado.
+- Dockerfiles y Compose actualizados; la construcción de las imágenes queda pendiente de verificación en un equipo con Docker instalado.
+
+Las secciones siguientes deben leerse como reparto y alcance propuestos al inicio del proyecto, no como lista de trabajo pendiente ni como inventario del código actual.
+
 ## 1. Objetivo del MVP
 
 Construir una aplicación web que permita:

@@ -18,7 +18,7 @@ def test_health_and_demo_are_available():
 
 def test_demo_is_synthetic_and_only_loads_after_an_explicit_action():
     index = client.get("/").text
-    script = client.get("/app.js").text
+    script = client.get("/js/dossierController.js").text
     translations = client.get("/i18n.js").text
     games = client.get("/api/v1/players/demo/jugador-muestra/games?mode=combined&page_size=20").json()["items"]
 
@@ -46,11 +46,27 @@ def test_security_headers_are_applied_to_api_and_web():
     assert client.get("/api/v1/health").headers["cache-control"] == "no-store"
 
 
+def test_frontend_feature_modules_are_served():
+    modules = (
+        "dossierController.js",
+        "eloCalculator.js",
+        "gameViewerController.js",
+        "otbController.js",
+        "pgnImportController.js",
+    )
+
+    for module in modules:
+        response = client.get(f"/js/{module}")
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-cache"
+        assert response.text.startswith('"use strict";')
+
+
 def test_loader_cycles_all_pieces_without_disabling_its_timer():
     index = client.get("/").text
     script = client.get("/app.js").text
 
-    assert "/app.js?v=20260803-elo-calculator" in index
+    assert "/app.js?v=20260803-refactor" in index
     assert 'const LOADER_PIECES = ["♙", "♘", "♗", "♖", "♕", "♔"];' in script
     assert "const LOADER_INTERVAL_MS = 450;" in script
     assert "window.setInterval(advanceLoaderPiece, LOADER_INTERVAL_MS)" in script
@@ -58,34 +74,35 @@ def test_loader_cycles_all_pieces_without_disabling_its_timer():
 
 def test_language_switcher_and_elo_calculator_are_available():
     index = client.get("/").text
-    script = client.get("/app.js").text
+    app_script = client.get("/app.js").text
+    elo_script = client.get("/js/eloCalculator.js").text
     translations = client.get("/i18n.js").text
 
     assert 'id="elo-calculator"' in index
     assert 'id="language-button"' in index
     assert 'id="language-menu"' in index
     assert index.count('data-language="') == 5
-    assert "/i18n.js?v=20260803-elo-calculator" in index
+    assert "/i18n.js?v=20260803-refactor" in index
     assert 'const STORAGE_KEY = "chessprep_language";' in translations
     assert '{ code: "es"' in translations
     assert '{ code: "en"' in translations
     assert '{ code: "de"' in translations
     assert '{ code: "fr"' in translations
     assert '{ code: "it"' in translations
-    assert 'document.addEventListener("chessprep:languagechange", refreshLocalizedInterface)' in script
-    assert 'i18n.setLanguage(button.dataset.language)' in script
+    assert 'document.addEventListener("chessprep:languagechange", refreshLocalizedInterface)' in app_script
+    assert 'i18n.setLanguage(button.dataset.language)' in app_script
     assert 'id="elo-dialog"' in index
     assert 'id="elo-panel-game"' in index
     assert 'id="elo-panel-initial"' in index
     assert 'id="elo-default-period" type="month"' in index
-    assert 'api("/elo/head-to-head"' in script
-    assert 'api("/elo/initial"' in script
-    assert 'if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;' not in script
+    assert 'this.api("/elo/head-to-head"' in elo_script
+    assert 'this.api("/elo/initial"' in elo_script
+    assert 'if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;' not in app_script
 
 
 def test_otb_dialog_exposes_info64_search_and_date_filters():
     index = client.get("/").text
-    script = client.get("/app.js").text
+    script = client.get("/js/otbController.js").text
 
     assert 'id="search-info64"' in index
     assert 'id="info64-from" type="text"' in index
@@ -96,15 +113,15 @@ def test_otb_dialog_exposes_info64_search_and_date_filters():
     assert 'id="info64-opponent-filter"' in index
     assert 'id="info64-clear-filters"' in index
     assert "/info64-results" in script
-    assert "safeInfo64Url" in script
-    assert "filterInfo64Results" in script
-    assert "parseSpanishDate" in script
-    assert "normalizeInfo64Opponent" in script
+    assert "_safeInfo64Url" in script
+    assert "_filterResults" in script
+    assert "_parseDate" in script
+    assert "_normalizeOpponent" in script
 
 
 def test_fide_profile_exposes_a_responsive_rating_trend():
     index = client.get("/").text
-    script = client.get("/app.js").text
+    script = client.get("/js/otbController.js").text
     styles = client.get("/styles.css").text
 
     assert 'id="fide-rating-trend"' in index
@@ -115,7 +132,7 @@ def test_fide_profile_exposes_a_responsive_rating_trend():
     assert 'id="fide-rating-delta-standard"' in index
     assert 'id="fide-rating-delta-rapid"' in index
     assert 'id="fide-rating-delta-blitz"' in index
-    assert "function renderFideRatingTrend(history)" in script
+    assert "renderRatingTrend(history)" in script
     assert "player.rating_history" in script
     assert 'key: "rapid_rating"' in script
     assert 'key: "blitz_rating"' in script
@@ -124,7 +141,7 @@ def test_fide_profile_exposes_a_responsive_rating_trend():
 
 def test_pgn_import_is_independent_and_can_be_cleared():
     index = client.get("/").text
-    script = client.get("/app.js").text
+    script = client.get("/js/pgnImportController.js").text
 
     assert 'id="importar-pgn"' in index
     assert 'id="manual-import"' not in index
@@ -132,14 +149,16 @@ def test_pgn_import_is_independent_and_can_be_cleared():
     assert 'id="remove-pgn-file"' in index
     assert 'id="pgn-import-status" aria-live="polite"' in index
     assert 'lowerName.endsWith(".txt")' in script
-    assert "function clearPgnFile()" in script
-    assert 'addEventListener("click", clearPgnFile)' in script
-    assert "state.fideProfile?.fide_id" not in script[script.index("function updateImportReady"):script.index("function safeInfo64Url")]
+    assert "clear()" in script
+    assert 'addEventListener("click", () => this.clear())' in script
+    assert "state.fideProfile?.fide_id" not in script
 
 
 def test_header_is_clean_and_online_otb_searches_have_equal_modes():
     index = client.get("/").text
-    script = client.get("/app.js").text
+    app_script = client.get("/app.js").text
+    dossier_script = client.get("/js/dossierController.js").text
+    otb_script = client.get("/js/otbController.js").text
 
     assert 'class="main-nav"' not in index
     assert 'id="menu-button"' not in index
@@ -149,13 +168,13 @@ def test_header_is_clean_and_online_otb_searches_have_equal_modes():
     assert 'id="hero-otb-search"' in index
     assert 'id="hero-fide-id"' in index
     assert 'id="importar-pgn"' in index
-    assert "#menu-button" not in script
-    assert "selectHeroSearchMode" in script
-    assert "submitHeroOtbSearch" in script
+    assert "#menu-button" not in app_script
+    assert "selectHeroSearchMode" in dossier_script
+    assert "submitHeroSearch" in otb_script
 
 
 def test_game_result_badges_keep_their_layout_and_use_stable_color_markers():
-    script = client.get("/app.js").text
+    script = client.get("/js/dossierController.js").text
     styles = client.get("/styles.css").text
 
     assert 'class="game-player-meta"' in script

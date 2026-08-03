@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qsl, quote, urlencode, urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from api.app.models import FidePlayer, Info64Result

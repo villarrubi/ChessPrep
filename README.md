@@ -25,19 +25,26 @@ Aplicación web de preparación ajedrecística para torneos. Convierte partidas 
 ## Arquitectura
 
 ```text
-web/                       SPA responsive (HTML, CSS y JavaScript)
-web/i18n.js                Traducciones locales, detección y persistencia del idioma
-web/js/                    Motor Stockfish (cliente), calidad de jugadas y modo explorar
-web/vendor/                chess.js y Stockfish WASM/JS (ver vendor/NOTICE.md)
-api/app/main.py            Endpoints FastAPI y servidor local del frontend
-api/app/services/pgn.py    Normalización PGN, SAN, UCI, FEN y deduplicación
-api/app/services/stats.py  Filtros y estadísticas deterministas
-api/app/services/elo.py    Tablas y cálculos de rating conforme al reglamento FIDE
-api/app/services/store.py  Datasets en memoria con caducidad
-api/app/providers/         Integraciones con Lichess, Chess.com, FIDE e Info64
-api/tests/                 Pruebas del contrato, parser y estadísticas
-docker-compose.yml         Servicios web y api separados
+web/                              SPA responsive sin proceso de build
+web/app.js                        Composición, utilidades comunes y estado compartido
+web/js/*Controller.js             Controladores de dossier, visor, OTB, PGN y Elo
+web/js/stockfishEngine.js         Adaptador del Worker de Stockfish
+web/js/gameAnalysis.js            Orquestación del análisis de una partida
+web/js/exploreMode.js             Análisis interactivo de posiciones
+web/i18n.js                       Traducciones, detección y persistencia del idioma
+web/vendor/                       chess.js y Stockfish WASM/JS (ver vendor/NOTICE.md)
+api/app/main.py                   Composición de proveedores y servicios concretos
+api/app/app_factory.py            Construcción y configuración de FastAPI
+api/app/routers/                  Adaptadores HTTP agrupados por capacidad
+api/app/services/                 Casos de uso, normalización, estadísticas y TTL
+api/app/providers/                Integraciones con Lichess, Chess.com, FIDE e Info64
+api/app/config.py                 Configuración tipada del entorno
+api/app/security.py               Límites HTTP, CORS, hosts y cabeceras defensivas
+api/tests/                        Pruebas del contrato, parser e integraciones
+docker-compose.yml                Servicios web y API separados
 ```
+
+La dependencia fluye desde los adaptadores hacia el núcleo: las rutas HTTP llaman a servicios de aplicación y estos reciben por inyección los proveedores y el almacén temporal que necesitan. `main.py` es el único punto que conoce todas las implementaciones concretas. En el navegador, `app.js` crea los controladores de cada función y les entrega únicamente las utilidades compartidas; el dossier, el visor, la búsqueda OTB, el importador PGN y la calculadora Elo no se llaman entre sí mediante detalles internos.
 
 ### Análisis Stockfish (cliente)
 
@@ -104,6 +111,10 @@ docker compose up --build
 - Web: [http://localhost:3000](http://localhost:3000)
 - API: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
 
+Los dos Dockerfiles y `docker-compose.yml` están preparados para la arquitectura modular actual. El contenedor de API copia también `web/js` y `web/vendor`, de modo que puede servir la SPA completa; el contenedor web sirve esos mismos recursos mediante Nginx y redirige `/api` a FastAPI.
+
+> **Verificación pendiente:** la construcción y el arranque de las imágenes no se han ejecutado después de la refactorización porque Docker no está instalado en el equipo de desarrollo actual. Esto no afecta al arranque con `run.ps1`. Cuando Docker esté disponible se debe ejecutar el comando anterior y comprobar `/`, `/api/v1/health`, la carga de una muestra y el visor con Stockfish.
+
 ## Pruebas
 
 ```powershell
@@ -111,6 +122,19 @@ docker compose up --build
 ```
 
 Las pruebas comprueban que el ejemplo sintético no se precarga ni se confunde con una fuente real, los cinco idiomas, las tablas y reglas de la calculadora FIDE, además de los totales estadísticos, los filtros por ritmo y apertura, la exclusión de variantes, la trazabilidad de una partida, las posiciones del visor, las integraciones de proveedor, el historial de los tres Elo FIDE y la importación PGN independiente con deduplicación e inferencia de jugador.
+
+### Estado de verificación
+
+A fecha de esta revisión, el estado es:
+
+- **49 pruebas automatizadas superadas**.
+- Todo el backend compila correctamente con `python -m compileall api`.
+- Los 11 módulos JavaScript pasan validación sintáctica.
+- Todos los CSS y scripts referenciados por `index.html` se sirven con código HTTP 200 y las cabeceras de seguridad previstas.
+- El contrato OpenAPI conserva los 18 endpoints públicos anteriores a la refactorización.
+- La construcción Docker queda pendiente por falta de Docker en el equipo; no por un error conocido en los archivos de despliegue.
+
+La batería emite actualmente un aviso de deprecación procedente de la integración entre `starlette.testclient` y `httpx`; no provoca fallos ni corresponde a una regla de negocio de ChessPrep.
 
 ## API principal
 

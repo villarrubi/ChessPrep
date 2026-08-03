@@ -1,38 +1,14 @@
 from __future__ import annotations
 
-import hashlib
-import os
-from datetime import date
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
-from starlette.middleware.trustedhost import TrustedHostMiddleware
-
-from api.app.models import (
-    CombinedPlayerCreate,
-    DatasetCreate,
-    EloDiscipline,
-    EloHeadToHeadRequest,
-    EloInitialRequest,
-    GameType,
-    Info64ResultsResponse,
-    Info64Summary,
-    Mode,
-    Pace,
-    PlayerRef,
-)
+from api.app.app_factory import create_app
+from api.app.config import Settings
+from api.app.models import CombinedPlayerCreate, EloHeadToHeadRequest, Mode, Pace
 from api.app.providers.chesscom import (
     ProviderUnavailable as ChessComUnavailable,
     fetch_games as fetch_chesscom_games,
     get_player as get_chesscom_player,
-)
-from api.app.providers.lichess import (
-    ProviderUnavailable as LichessUnavailable,
-    fetch_games as fetch_lichess_games,
-    get_player as get_lichess_player,
 )
 from api.app.providers.fide import (
     ProviderUnavailable as FideUnavailable,
@@ -44,792 +20,108 @@ from api.app.providers.info64 import (
     ProviderUnavailable as Info64Unavailable,
     fetch_results as fetch_info64_results,
 )
-from api.app.services.pgn import parse_pgn
-from api.app.services.elo import calculate_head_to_head, calculate_initial_rating
-from api.app.services.stats import calculate_stats, filter_games
+from api.app.providers.lichess import (
+    ProviderUnavailable as LichessUnavailable,
+    fetch_games as fetch_lichess_games,
+    get_player as get_lichess_player,
+)
+from api.app.security import CONTENT_SECURITY_POLICY, DOCS_CONTENT_SECURITY_POLICY
+from api.app.services.container import ApplicationServices
+from api.app.services.datasets import DatasetService
+from api.app.services.demo import DEMO_PLAYER, DemoDatasetService
+from api.app.services.elo_calculator import EloCalculatorService
+from api.app.services.online_players import OnlinePlayerService, OnlineProvider
+from api.app.services.otb import OtbLookupService
 from api.app.services.store import store
 
 
-MAX_REQUEST_BYTES = 6_000_000
-ENABLE_API_DOCS = os.getenv("CHESSPREP_ENABLE_DOCS", "true").strip().casefold() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
-CONTENT_SECURITY_POLICY = "; ".join(
-    (
-        "default-src 'self'",
-        "base-uri 'none'",
-        "object-src 'none'",
-        "frame-ancestors 'none'",
-        "form-action 'self'",
-        "script-src 'self'",
-        "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data:",
-        "font-src 'self'",
-        "connect-src 'self'",
-        "worker-src 'self'",
-        "manifest-src 'self'",
-    )
-)
-DOCS_CONTENT_SECURITY_POLICY = "; ".join(
-    (
-        "default-src 'self'",
-        "base-uri 'none'",
-        "object-src 'none'",
-        "frame-ancestors 'none'",
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
-        "img-src 'self' data: https://fastapi.tiangolo.com",
-        "connect-src 'self'",
-    )
-)
-
-
-app = FastAPI(
-    title="ChessPrep API",
-    version="1.0.0",
-    description="API determinista para preparar torneos con partidas PGN trazables.",
-    docs_url="/api/docs" if ENABLE_API_DOCS else None,
-    openapi_url="/api/openapi.json" if ENABLE_API_DOCS else None,
-)
-
-origins = [
-    item.strip()
-    for item in os.getenv(
-        "CHESSPREP_CORS_ORIGINS", "http://localhost:3000,http://localhost:8000"
-    ).split(",")
-    if item.strip()
-]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Accept", "Content-Type"],
-)
-allowed_hosts = [
-    item.strip()
-    for item in os.getenv(
-        "CHESSPREP_ALLOWED_HOSTS", "localhost,127.0.0.1,[::1],testserver"
-    ).split(",")
-    if item.strip()
-]
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
-
-
-@app.middleware("http")
-async def protect_http_boundary(request, call_next):
-    """Reject oversized bodies and apply browser defenses to every response."""
-
-    response = None
-    content_length = request.headers.get("content-length")
-    if content_length:
-        try:
-            too_large = int(content_length) > MAX_REQUEST_BYTES
-        except ValueError:
-            response = JSONResponse(
-                status_code=400, content={"detail": "Content-Length no válido."}
-            )
-        else:
-            if too_large:
-                response = JSONResponse(
-                    status_code=413,
-                    content={"detail": "La petición supera el límite de 6 MB."},
-                )
-    if response is None:
-        response = await call_next(request)
-
-    docs_request = request.url.path in {"/api/docs", "/api/docs/"}
-    response.headers["Content-Security-Policy"] = (
-        DOCS_CONTENT_SECURITY_POLICY if docs_request else CONTENT_SECURITY_POLICY
-    )
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["Permissions-Policy"] = (
-        "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
-    )
-    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
-    response.headers["X-XSS-Protection"] = "0"
-    if request.url.path.startswith("/api/"):
-        response.headers["Cache-Control"] = "no-store"
-    elif (
-        request.url.path == "/"
-        or request.url.path.endswith((".html", ".js", ".css"))
-    ):
-        response.headers["Cache-Control"] = "no-cache"
-    return response
-
-
+# This module is the composition root: concrete providers are wired here and
+# the rest of the application depends only on their small service contracts.
+settings = Settings.from_environment()
+MAX_REQUEST_BYTES = settings.max_request_bytes
+ENABLE_API_DOCS = settings.enable_api_docs
 DATA_DIR = Path(__file__).resolve().parent / "data"
-DEMO_PLAYER = PlayerRef(
-    source="demo",
-    external_id="jugador-muestra",
-    username="Jugador de muestra",
-    display_name="Jugador de muestra",
-    game_type=GameType.ONLINE,
+
+demo_service = DemoDatasetService(store, DATA_DIR)
+dataset_service = DatasetService(store)
+online_player_service = OnlinePlayerService(
+    store,
+    demo_service,
+    (
+        OnlineProvider(
+            source="lichess",
+            label="Lichess",
+            get_player=lambda username: get_lichess_player(username),
+            fetch_games=lambda username, max_games: fetch_lichess_games(
+                username,
+                max_games=max_games,
+            ),
+            unavailable_error=LichessUnavailable,
+        ),
+        OnlineProvider(
+            source="chess.com",
+            label="Chess.com",
+            get_player=lambda username: get_chesscom_player(username),
+            fetch_games=lambda username, max_games: fetch_chesscom_games(
+                username,
+                max_games=max_games,
+            ),
+            unavailable_error=ChessComUnavailable,
+        ),
+    ),
 )
+elo_service = EloCalculatorService(
+    get_player=lambda fide_id, **kwargs: get_fide_player(fide_id, **kwargs),
+    get_current_ratings=lambda fide_ids, discipline: get_current_rating_data(
+        fide_ids,
+        discipline,
+    ),
+    get_historical_rating=lambda fide_id, discipline, period: get_historical_rating(
+        fide_id,
+        discipline,
+        period,
+    ),
+    unavailable_error=FideUnavailable,
+)
+otb_service = OtbLookupService(
+    get_fide_player=lambda fide_id, **kwargs: get_fide_player(fide_id, **kwargs),
+    fetch_info64_results=lambda player, **kwargs: fetch_info64_results(
+        player,
+        **kwargs,
+    ),
+    fide_unavailable_error=FideUnavailable,
+    info64_unavailable_error=Info64Unavailable,
+)
+services = ApplicationServices(
+    demo=demo_service,
+    online_players=online_player_service,
+    datasets=dataset_service,
+    elo=elo_service,
+    otb=otb_service,
+)
+app = create_app(settings, services)
 
 
+# Compatibility helpers retained for scripts and tests that imported the old
+# monolithic module directly. New code should use the injected services above.
 def ensure_demo():
-    existing = store.get_for_player(DEMO_PLAYER.source, DEMO_PLAYER.external_id)
-    if existing:
-        return existing
-    online = parse_pgn(
-        (DATA_DIR / "demo_online.pgn").read_text(encoding="utf-8"),
-        source="demo",
-        game_type=GameType.ONLINE,
-        target_player="Jugador de muestra",
-        confidence="synthetic",
-    )
-    otb = parse_pgn(
-        (DATA_DIR / "demo_otb.pgn").read_text(encoding="utf-8"),
-        source="demo",
-        game_type=GameType.OTB,
-        target_player="Jugador de muestra",
-        confidence="synthetic",
-    )
-    return store.create(DEMO_PLAYER, [*online.games, *otb.games], dataset_id="demo-jugador-muestra")
+    return demo_service.ensure()
 
 
 def get_dataset_or_404(source: str, external_id: str):
-    if source == "demo" and external_id == DEMO_PLAYER.external_id:
-        return ensure_demo()
-    dataset = store.get_for_player(source, external_id)
-    if dataset:
-        return dataset
-    if source not in {"lichess", "chess.com"}:
-        raise HTTPException(status_code=404, detail="No se encontró el conjunto temporal.")
-    try:
-        if source == "lichess":
-            player = get_lichess_player(external_id)
-            parsed = fetch_lichess_games(player.username)
-        else:
-            player = get_chesscom_player(external_id)
-            parsed = fetch_chesscom_games(player.username)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except (LichessUnavailable, ChessComUnavailable) as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    if not parsed.games:
-        raise HTTPException(status_code=422, detail="Lichess no devolvió partidas públicas utilizables.")
-    return store.create(player, parsed.games)
+    return online_player_service.get_dataset(source, external_id)
 
 
-def create_combined_player_dataset(payload: CombinedPlayerCreate, max_games: int = 30):
-    handles = [payload.lichess_username, payload.chesscom_username]
-    if not any(value and value.strip() for value in handles):
-        raise HTTPException(status_code=422, detail="Indica al menos un usuario de Lichess o Chess.com.")
-
-    players: list[PlayerRef] = []
-    games = []
-    warnings: list[str] = []
-    requested = 0
-
-    if payload.lichess_username and payload.lichess_username.strip():
-        requested += 1
-        handle = payload.lichess_username.strip()
-        try:
-            player = get_lichess_player(handle)
-            parsed = fetch_lichess_games(player.username, max_games=max_games)
-            players.append(player)
-            games.extend(parsed.games)
-            warnings.extend(parsed.errors)
-        except (LookupError, LichessUnavailable) as exc:
-            warnings.append(f"Lichess: {exc}")
-
-    if payload.chesscom_username and payload.chesscom_username.strip():
-        requested += 1
-        handle = payload.chesscom_username.strip()
-        try:
-            player = get_chesscom_player(handle)
-            parsed = fetch_chesscom_games(player.username, max_games=max_games)
-            players.append(player)
-            games.extend(parsed.games)
-            warnings.extend(parsed.errors)
-        except (LookupError, ChessComUnavailable) as exc:
-            warnings.append(f"Chess.com: {exc}")
-
-    if not games:
-        detail = " ".join(warnings) or "Ninguna plataforma devolvió partidas públicas."
-        raise HTTPException(status_code=422, detail=detail)
-
-    unique_games = {}
-    for game in games:
-        unique_games.setdefault(game.dedupe_hash, game)
-    duplicates = len(games) - len(unique_games)
-    identifier_source = "|".join(value.strip().casefold() for value in handles if value and value.strip())
-    external_id = hashlib.sha256(identifier_source.encode("utf-8")).hexdigest()[:16]
-    display_player = next((player for player in players if " " in player.display_name), players[0])
-    combined_player = PlayerRef(
-        source="combined",
-        external_id=external_id,
-        username=" + ".join(player.username for player in players),
-        display_name=display_player.display_name,
-        title=next((player.title for player in players if player.title), None),
-        rating=max((player.rating for player in players if player.rating), default=None),
-        country=next((player.country for player in players if player.country), None),
-        avatar_url=next((player.avatar_url for player in players if player.avatar_url), None),
-        game_type=GameType.ONLINE,
-    )
-    dataset = store.create(combined_player, list(unique_games.values()))
-    if len(players) < requested:
-        warnings.append("El dossier se creó con las plataformas que sí estaban disponibles.")
-    return dataset, warnings, duplicates
+def create_combined_player_dataset(
+    payload: CombinedPlayerCreate,
+    max_games: int = 30,
+):
+    return online_player_service.combine(payload, max_games)
 
 
 def trace_for(dataset, games, mode: Mode, pace: Pace):
-    dates = sorted(game.date for game in games if game.date)
-    return {
-        "sample_size": len(games),
-        "sources": sorted({game.source for game in games}),
-        "mode": mode.value,
-        "pace": pace.value,
-        "date_range": {"from": dates[0] if dates else None, "to": dates[-1] if dates else None},
-        "dataset_id": dataset.dataset_id,
-        "expires_at": dataset.expires_at,
-    }
+    return dataset_service.trace(dataset, games, mode, pace)
 
 
-@app.get("/api/v1/health")
-def health():
-    return {"status": "ok", "service": "chessprep-api", "version": app.version}
-
-
-@app.get("/api/v1/demo")
-def demo():
-    dataset = ensure_demo()
-    return {
-        "player": dataset.player,
-        "dataset_id": dataset.dataset_id,
-        "games": len(dataset.games),
-        "expires_at": dataset.expires_at,
-    }
-
-
-@app.get("/api/v1/players/search")
-def search_players(q: str = Query(min_length=2, max_length=80), source: str = "all"):
-    clean = q.strip()
-    demo_match = clean.casefold() in {
-        "jugador de muestra",
-        "demo",
-        "muestra",
-    }
-    results = [DEMO_PLAYER] if demo_match else []
-    messages: list[str] = []
-    available = False
-    if source in {"lichess", "all"}:
-        try:
-            player = get_lichess_player(clean)
-            results.append(player)
-            available = True
-        except LookupError:
-            messages.append("No se encontró una cuenta exacta en Lichess.")
-            available = True
-        except LichessUnavailable as exc:
-            messages.append(str(exc))
-    if source in {"chess.com", "all"}:
-        try:
-            player = get_chesscom_player(clean)
-            results.append(player)
-            available = True
-        except LookupError:
-            messages.append("No se encontró una cuenta exacta en Chess.com.")
-            available = True
-        except ChessComUnavailable as exc:
-            messages.append(str(exc))
-    return {
-        "results": results,
-        "provider_available": available,
-        "message": " ".join(messages) or None,
-    }
-
-
-@app.post("/api/v1/players/combined")
-def combine_players(payload: CombinedPlayerCreate, max_games: int = Query(100, ge=1, le=100)):
-    dataset, warnings, duplicates = create_combined_player_dataset(payload, max_games=max_games)
-    return {"dataset": dataset, "warnings": warnings, "duplicates": duplicates}
-
-
-@app.get("/api/v1/players/{source}/{external_id}")
-def player_detail(source: str, external_id: str):
-    if source == "demo" and external_id == DEMO_PLAYER.external_id:
-        return ensure_demo().player
-    existing = store.get_for_player(source, external_id)
-    if existing:
-        return existing.player
-    if source not in {"lichess", "chess.com"}:
-        raise HTTPException(status_code=404, detail="Jugador no encontrado.")
-    try:
-        return get_lichess_player(external_id) if source == "lichess" else get_chesscom_player(external_id)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except (LichessUnavailable, ChessComUnavailable) as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@app.post("/api/v1/players/{source}/{external_id}/refresh-games")
-def refresh_games(source: str, external_id: str, max_games: int = Query(100, ge=1, le=100)):
-    if source == "demo":
-        dataset = ensure_demo()
-        return {"dataset": dataset, "warnings": [], "duplicates": 0}
-    if source not in {"lichess", "chess.com"}:
-        raise HTTPException(status_code=400, detail="El proveedor indicado no admite actualización.")
-    try:
-        if source == "lichess":
-            player = get_lichess_player(external_id)
-            parsed = fetch_lichess_games(player.username, max_games=max_games)
-        else:
-            player = get_chesscom_player(external_id)
-            parsed = fetch_chesscom_games(player.username, max_games=max_games)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except (LichessUnavailable, ChessComUnavailable) as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    if not parsed.games:
-        raise HTTPException(status_code=422, detail="No se encontraron partidas públicas válidas.")
-    dataset = store.create(player, parsed.games)
-    return {"dataset": dataset, "warnings": parsed.errors, "duplicates": parsed.duplicates}
-
-
-@app.get("/api/v1/players/{source}/{external_id}/games")
-def player_games(
-    source: str,
-    external_id: str,
-    mode: Mode = Mode.COMBINED,
-    pace: Pace = Pace.GLOBAL,
-    color: str | None = None,
-    eco: str | None = None,
-    result: str | None = None,
-    date_from: str | None = Query(None, alias="from"),
-    date_to: str | None = Query(None, alias="to"),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=250),
-):
-    dataset = get_dataset_or_404(source, external_id)
-    games = filter_games(
-        dataset.games,
-        mode=mode,
-        pace=pace,
-        color=color,
-        eco=eco,
-        result=result,
-        date_from=date_from,
-        date_to=date_to,
-    )
-    start = (page - 1) * page_size
-    return {
-        "items": games[start : start + page_size],
-        "total": len(games),
-        "page": page,
-        "page_size": page_size,
-        "trace": trace_for(dataset, games, mode, pace),
-    }
-
-
-@app.get("/api/v1/players/{source}/{external_id}/stats")
-def player_stats(
-    source: str,
-    external_id: str,
-    mode: Mode = Mode.COMBINED,
-    pace: Pace = Pace.GLOBAL,
-):
-    dataset = get_dataset_or_404(source, external_id)
-    return calculate_stats(dataset.games, mode, pace)
-
-
-@app.get("/api/v1/players/{source}/{external_id}/stats/by-color")
-def player_stats_by_color(
-    source: str,
-    external_id: str,
-    mode: Mode = Mode.COMBINED,
-    pace: Pace = Pace.GLOBAL,
-):
-    dataset = get_dataset_or_404(source, external_id)
-    stats = calculate_stats(dataset.games, mode, pace)
-    return {key: stats[key] for key in ("mode", "pace", "sample_size", "sources", "date_range", "by_color")}
-
-
-@app.get("/api/v1/players/{source}/{external_id}/stats/openings")
-def player_stats_openings(
-    source: str,
-    external_id: str,
-    mode: Mode = Mode.COMBINED,
-    pace: Pace = Pace.GLOBAL,
-    color: str | None = None,
-):
-    dataset = get_dataset_or_404(source, external_id)
-    stats = calculate_stats(dataset.games, mode, pace)
-    openings = stats["openings"]
-    if color:
-        openings = [item for item in openings if item["color"] == color]
-    return {
-        "mode": stats["mode"],
-        "pace": stats["pace"],
-        "sample_size": stats["sample_size"],
-        "sources": stats["sources"],
-        "date_range": stats["date_range"],
-        "openings": openings,
-    }
-
-
-@app.get("/api/v1/games/{source}/{game_id}")
-def game_detail(source: str, game_id: str):
-    ensure_demo()
-    game = store.find_game(source, game_id)
-    if not game:
-        raise HTTPException(status_code=404, detail="Partida no encontrada o conjunto caducado.")
-    return game
-
-
-@app.get("/api/v1/fide/players/{fide_id}")
-def fide_player_detail(fide_id: str):
-    try:
-        return get_fide_player(fide_id)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except FideUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-def _resolve_current_elo_players(payload: EloHeadToHeadRequest) -> list[dict[str, object]]:
-    inputs = [payload.player_a, payload.player_b]
-    fide_ids = [player.fide_id for player in inputs if player.fide_id]
-    try:
-        official_ratings = (
-            get_current_rating_data(fide_ids, payload.discipline) if fide_ids else {}
-        )
-    except LookupError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except FideUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-    resolved: list[dict[str, object]] = []
-    for index, player_input in enumerate(inputs):
-        if player_input.fide_id:
-            if player_input.rating is not None or player_input.k is not None:
-                raise HTTPException(
-                    status_code=422,
-                    detail="No mezcles un ID FIDE con Elo o K manuales en el mismo jugador.",
-                )
-            current = official_ratings.get(player_input.fide_id)
-            if not current:
-                raise HTTPException(
-                    status_code=422,
-                    detail=(
-                        f"El jugador {player_input.fide_id} no tiene Elo {payload.discipline.value} "
-                        "en la lista mensual actual de FIDE."
-                    ),
-                )
-            try:
-                profile = get_fide_player(player_input.fide_id, include_history=False)
-            except LookupError as exc:
-                raise HTTPException(status_code=404, detail=str(exc)) from exc
-            except FideUnavailable as exc:
-                raise HTTPException(status_code=503, detail=str(exc)) from exc
-            resolved.append(
-                {
-                    "name": profile.name,
-                    "fide_id": profile.fide_id,
-                    "rating": current["rating"],
-                    "k": current["k"],
-                    "source": "fide_current_list",
-                }
-            )
-            continue
-        if player_input.rating is None or player_input.k is None:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Indica ID FIDE o Elo y K manuales para el jugador {'A' if index == 0 else 'B'}.",
-            )
-        resolved.append(
-            {
-                "name": f"Jugador {'A' if index == 0 else 'B'}",
-                "fide_id": None,
-                "rating": player_input.rating,
-                "k": player_input.k,
-                "source": "manual",
-            }
-        )
-    return resolved
-
-
-@app.post("/api/v1/elo/head-to-head")
-def elo_head_to_head(payload: EloHeadToHeadRequest):
-    players = _resolve_current_elo_players(payload)
-    calculation = calculate_head_to_head(
-        int(players[0]["rating"]),
-        int(players[0]["k"]),
-        int(players[1]["rating"]),
-        int(players[1]["k"]),
-        payload.discipline,
-    )
-    return {
-        "discipline": payload.discipline,
-        "player_a": players[0],
-        "player_b": players[1],
-        **calculation,
-    }
-
-
-@app.post("/api/v1/elo/initial")
-def elo_initial(payload: EloInitialRequest):
-    resolved_games: list[dict[str, object]] = []
-    profile_cache: dict[str, object] = {}
-    history_cache: dict[tuple[str, EloDiscipline, str], dict[str, object]] = {}
-    score_by_result = {"win": 1.0, "draw": 0.5, "loss": 0.0}
-    for index, game in enumerate(payload.games, start=1):
-        if game.fide_id:
-            if game.rating is not None:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"No mezcles ID FIDE y Elo manual en el rival {index}.",
-                )
-            try:
-                if game.fide_id not in profile_cache:
-                    profile_cache[game.fide_id] = get_fide_player(
-                        game.fide_id, include_history=False
-                    )
-                key = (game.fide_id, payload.discipline, game.period)
-                if key not in history_cache:
-                    history_cache[key] = get_historical_rating(
-                        game.fide_id, payload.discipline, game.period
-                    )
-            except LookupError as exc:
-                raise HTTPException(status_code=404, detail=str(exc)) from exc
-            except FideUnavailable as exc:
-                raise HTTPException(status_code=503, detail=str(exc)) from exc
-            profile = profile_cache[game.fide_id]
-            historical = history_cache[key]
-            if historical["rating"] is None:
-                raise HTTPException(
-                    status_code=422,
-                    detail=(
-                        f"{profile.name} no tenía Elo {payload.discipline.value} "
-                        f"publicado en {game.period}."
-                    ),
-                )
-            resolved_games.append(
-                {
-                    "name": profile.name,
-                    "fide_id": game.fide_id,
-                    "rating": historical["rating"],
-                    "rating_source": historical["rating_source"],
-                    "standard_fallback": historical["standard_fallback"],
-                    "period": game.period,
-                    "result": game.result.value,
-                    "score": score_by_result[game.result.value],
-                    "source": "fide_history",
-                }
-            )
-            continue
-        if game.rating is None:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Indica el ID FIDE o el Elo manual del rival {index}.",
-            )
-        resolved_games.append(
-            {
-                "name": f"Rival {index}",
-                "fide_id": None,
-                "rating": game.rating,
-                "rating_source": payload.discipline.value,
-                "standard_fallback": False,
-                "period": game.period,
-                "result": game.result.value,
-                "score": score_by_result[game.result.value],
-                "source": "manual",
-            }
-        )
-
-    calculation = calculate_initial_rating(resolved_games)
-    warnings: list[str] = []
-    if calculation["game_count"] < 5:
-        warnings.append("FIDE exige al menos cinco partidas reales contra rivales evaluados.")
-    if calculation["real_score"] == 0:
-        warnings.append("Un resultado inicial de cero puntos no produce una valoración publicada.")
-    if not calculation["within_26_months"]:
-        warnings.append("Las partidas abarcan más de 26 periodos mensuales consecutivos.")
-    if calculation["initial_rating"] < 1400:
-        warnings.append("El resultado queda por debajo del suelo de publicación de 1400.")
-    if calculation["capped_at_2200"]:
-        warnings.append("FIDE limita la valoración inicial máxima a 2200.")
-    if any(game["standard_fallback"] for game in resolved_games):
-        warnings.append(
-            "En rápido o blitz se utilizó el Elo estándar cuando el rival no tenía Elo propio en esa lista."
-        )
-    return {
-        "discipline": payload.discipline,
-        "games": resolved_games,
-        "warnings": warnings,
-        **calculation,
-    }
-
-
-@app.get(
-    "/api/v1/fide/players/{fide_id}/info64-results",
-    response_model=Info64ResultsResponse,
-)
-def fide_player_info64_results(
-    fide_id: str,
-    date_from: date | None = Query(default=None, alias="from"),
-    date_to: date | None = Query(default=None, alias="to"),
-):
-    if date_from and date_to and date_from > date_to:
-        raise HTTPException(
-            status_code=422,
-            detail="La fecha inicial no puede ser posterior a la fecha final.",
-        )
-    try:
-        player = get_fide_player(fide_id, include_history=False)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except FideUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    try:
-        lookup = fetch_info64_results(player, date_from=date_from, date_to=date_to)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except Info64Unavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-    results = lookup["results"]
-    wins = sum(result.outcome == "win" for result in results)
-    draws = sum(result.outcome == "draw" for result in results)
-    losses = sum(result.outcome == "loss" for result in results)
-    result_dates = sorted(result.date for result in results if result.date)
-    summary = Info64Summary(
-        games=len(results),
-        wins=wins,
-        draws=draws,
-        losses=losses,
-        score_percentage=round(
-            100 * sum(result.score for result in results) / len(results), 1
-        )
-        if results
-        else 0.0,
-        opponents=len(
-            {
-                result.opponent_fide_id or result.opponent_name.casefold()
-                for result in results
-            }
-        ),
-        tournaments=len({result.tournament_url for result in results}),
-        walkovers=sum(result.walkover for result in results),
-        date_range={
-            "from": result_dates[0] if result_dates else None,
-            "to": result_dates[-1] if result_dates else None,
-        },
-    )
-    return Info64ResultsResponse(
-        player=player,
-        results=results,
-        summary=summary,
-        warnings=lookup["warnings"],
-        source_url=lookup["source_url"],
-        tournaments_scanned=lookup["tournaments_scanned"],
-        tournaments_matched=lookup["tournaments_matched"],
-    )
-
-
-@app.post("/api/v1/datasets", status_code=201)
-def create_dataset(payload: DatasetCreate):
-    if payload.merge_with_dataset_id:
-        raise HTTPException(
-            status_code=422,
-            detail="La importación PGN es independiente y no se fusiona con otro dossier.",
-        )
-
-    if payload.game_type != GameType.OTB:
-        raise HTTPException(status_code=422, detail="Este importador solo admite partidas OTB.")
-
-    preliminary = parse_pgn(
-        payload.pgn,
-        source="pgn_import",
-        game_type=payload.game_type,
-        confidence="user_upload",
-    )
-    if not preliminary.games:
-        detail = preliminary.errors[0] if preliminary.errors else "No se pudo procesar el PGN."
-        raise HTTPException(status_code=422, detail=detail)
-
-    player_counts: dict[str, int] = {}
-    player_names: dict[str, str] = {}
-    for game in preliminary.games:
-        for name in (game.white, game.black):
-            key = name.casefold().strip()
-            if not key:
-                continue
-            player_counts[key] = player_counts.get(key, 0) + 1
-            player_names.setdefault(key, name)
-    target_key = max(player_counts, key=player_counts.get)
-    target_name = player_names[target_key]
-
-    parsed = parse_pgn(
-        payload.pgn,
-        source="pgn_import",
-        game_type=payload.game_type,
-        target_player=target_name,
-        confidence="user_upload",
-    )
-    if not parsed.games:
-        detail = parsed.errors[0] if parsed.errors else "No se pudo procesar el PGN."
-        raise HTTPException(status_code=422, detail=detail)
-
-    identity = "|".join(game.dedupe_hash for game in parsed.games)
-    external_id = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
-    ratings = [
-        game.white_elo if game.player_color == "white" else game.black_elo
-        for game in parsed.games
-    ]
-
-    player = PlayerRef(
-        source="pgn_import",
-        external_id=external_id,
-        username=target_name,
-        display_name=target_name,
-        rating=next((rating for rating in ratings if rating), None),
-        game_type=payload.game_type,
-    )
-    dataset = store.create(player, parsed.games)
-    return {
-        "dataset": dataset,
-        "fide_player": None,
-        "warnings": parsed.errors,
-        "duplicates": parsed.duplicates,
-        "rejected_games": 0,
-        "merged_games": len(parsed.games),
-    }
-
-
-@app.get("/api/v1/datasets/{dataset_id}/games")
-def dataset_games(
-    dataset_id: str,
-    mode: Mode = Mode.COMBINED,
-    pace: Pace = Pace.GLOBAL,
-):
-    dataset = store.get(dataset_id)
-    if not dataset:
-        raise HTTPException(status_code=404, detail="Dataset no encontrado o caducado.")
-    games = filter_games(dataset.games, mode=mode, pace=pace)
-    return {"items": games, "total": len(games), "trace": trace_for(dataset, games, mode, pace)}
-
-
-@app.get("/api/v1/datasets/{dataset_id}/stats")
-def dataset_stats(
-    dataset_id: str,
-    mode: Mode = Mode.COMBINED,
-    pace: Pace = Pace.GLOBAL,
-):
-    dataset = store.get(dataset_id)
-    if not dataset:
-        raise HTTPException(status_code=404, detail="Dataset no encontrado o caducado.")
-    return calculate_stats(dataset.games, mode, pace)
-
-
-web_dir = Path(os.getenv("CHESSPREP_WEB_DIR", Path(__file__).resolve().parents[2] / "web"))
-if web_dir.exists():
-    app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")
+def _resolve_current_elo_players(payload: EloHeadToHeadRequest):
+    return elo_service.resolve_current_players(payload)

@@ -17,7 +17,7 @@ from api.app.services.text import clean_untrusted_text
 
 
 BASE_URL = "https://ratings.fide.com"
-USER_AGENT = "ChessPrep/1.0 (FIDE identity verification; github.com/villarrubi/Chess-Tournament-Assistant)"
+USER_AGENT = "ChessPrep/1.0 (FIDE identity verification; github.com/villarrubi/ChessPrep)"
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_HISTORY_RESPONSE_BYTES = 500_000
 MAX_RATING_LIST_BYTES = 25_000_000

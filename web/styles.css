@@ -1,3 +1,4 @@
+/* Design tokens and global defaults */
 :root {
   --ink: #14211d;
   --ink-soft: #4f5b56;
@@ -38,6 +39,7 @@ svg:not(.board-arrows) { width: 1.2em; fill: none; stroke: currentColor; stroke-
 [hidden] { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
+/* Header and reusable controls */
 .page-shell { overflow: hidden; }
 .site-header {
   width: min(1400px, calc(100% - 64px));
@@ -99,6 +101,7 @@ svg:not(.board-arrows) { width: 1.2em; fill: none; stroke: currentColor; stroke-
 .button-light { background: var(--cream); color: var(--forest); }
 .button-light:hover { background: white; transform: translateY(-1px); }
 
+/* Search hero and preview card */
 .hero {
   width: min(1400px, calc(100% - 64px));
   min-height: 670px;
@@ -189,6 +192,7 @@ svg:not(.board-arrows) { width: 1.2em; fill: none; stroke: currentColor; stroke-
 .trust-strip strong { display: block; color: var(--ink); text-transform: uppercase; letter-spacing: .8px; font-size: 9px; }
 
 .workbench, .games-section { width: min(1300px, calc(100% - 64px)); margin: 0 auto; padding: 100px 0 34px; scroll-margin-top: 40px; }
+/* Player dossier and statistics */
 .section-heading-row { display: flex; align-items: end; justify-content: space-between; gap: 30px; margin-bottom: 34px; }
 .section-kicker { margin-bottom: 9px; }
 .section-heading-row h2, .pgn-import-section h2 { margin: 0; font-family: var(--serif); font-weight: 500; font-size: clamp(36px, 4vw, 54px); line-height: 1.05; letter-spacing: -2.2px; }
@@ -271,6 +275,7 @@ tbody tr:hover { background: #f5f1e8; }
 .sample-note > span { width: 19px; height: 19px; flex: 0 0 auto; border-radius: 50%; border: 1px solid #9da49f; display: grid; place-items: center; font-family: var(--serif); font-size: 10px; }
 .sample-note p { margin: 0; color: #747d78; font-size: 8px; line-height: 1.55; }.sample-note strong { display: block; color: var(--ink); }
 
+/* Filterable game list and PGN import */
 .games-section { padding-top: 92px; padding-bottom: 105px; }
 .games-heading { margin-bottom: 26px; }
 .games-heading > p { color: #7c8580; font-size: 10px; }
@@ -315,6 +320,7 @@ footer { min-height: 92px; padding: 0 max(32px, calc((100% - 1300px)/2)); backgr
 .footer-brand { color: #e8e5dc; }.footer-brand .brand-mark { background: var(--cream); color: var(--forest); }
 footer > p { flex: 1; } footer > div { display: flex; gap: 12px; } footer a:hover { color: white; }
 
+/* Dialog foundations and feature forms */
 .dialog-backdrop { position: fixed; inset: 0; z-index: 100; padding: 24px; background: rgba(7,18,15,.76); backdrop-filter: blur(7px); display: grid; place-items: center; animation: fadeIn .2s ease; }
 .dialog { width: min(560px, 100%); max-height: calc(100vh - 48px); padding: 38px; border-radius: 17px; background: var(--paper); box-shadow: 0 30px 100px rgba(0,0,0,.35); position: relative; overflow-y: auto; animation: riseIn .25s ease; }
 .import-dialog { width: min(1000px, 100%); }
@@ -393,6 +399,7 @@ footer > p { flex: 1; } footer > div { display: flex; gap: 12px; } footer a:hove
 .fide-verify-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .fide-verify-row .button { min-width: 105px; }
 .field-help { margin: 7px 1px 0; color: #858e89; font-size: 8px; line-height: 1.5; }
+/* FIDE identity and Info64 results */
 .fide-profile-card { margin-top: 13px; padding: 13px; border: 1px solid #c8d8cd; border-radius: 9px; background: #e8f0ea; display: grid; grid-template-columns: 30px minmax(170px, 1fr) minmax(185px, 240px) auto; align-items: center; gap: 13px; }
 .fide-verified-icon { width: 27px; height: 27px; border-radius: 50%; display: grid; place-items: center; background: var(--win); color: white; font-size: 13px; font-weight: 900; }
 .fide-profile-identity { min-width: 0; display: flex; flex-direction: column; gap: 3px; }.fide-profile-identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--serif); font-size: 14px; }.fide-profile-identity span { color: #65736c; font-size: 8px; }
@@ -442,6 +449,7 @@ footer > p { flex: 1; } footer > div { display: flex; gap: 12px; } footer a:hove
 .provider-join { height: 46px; display: grid; place-items: center; color: var(--terracotta); font-family: var(--serif); font-size: 20px; }
 .combine-note { margin: 12px 0 0; padding: 10px 12px; border-radius: 6px; background: #eeeae1; color: #76807b; font-size: 8px; line-height: 1.5; }
 
+/* Game viewer, playback and Stockfish analysis */
 .viewer-backdrop { padding: 20px; }
 .viewer-dialog { width: min(1120px, 100%); height: min(760px, calc(100vh - 40px)); max-height: none; padding: 28px; overflow: hidden; display: grid; grid-template-columns: minmax(430px, 1fr) minmax(340px, .72fr); gap: 36px; background: #eeeae0; }
 .viewer-close { z-index: 3; }
@@ -514,6 +522,7 @@ footer > p { flex: 1; } footer > div { display: flex; gap: 12px; } footer a:hove
 .viewer-controls { flex: 0 0 auto; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(5,1fr); gap: 6px; }.viewer-controls button { height: 42px; border: 1px solid var(--line); border-radius: 7px; background: transparent; font-family: var(--serif); font-size: 20px; cursor: pointer; }.viewer-controls button:hover { background: #ece8df; color: var(--ink);}.viewer-controls .play-button { background: var(--terracotta); color: white; border-color: var(--terracotta); font-size: 13px; }.keyboard-tip { flex: 0 0 auto; margin: 10px 0; text-align: center; color: #929995; font-size: 10px; }.keyboard-tip kbd { min-width: 18px; margin: 0 2px; padding: 2px 4px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px; background: #fff; font-family: var(--sans); }
 .viewer-source { flex: 0 0 auto; padding: 12px; border-radius: 7px; background: #eeeae1; color: #727b76; font-size: 10px; line-height: 1.5; }.viewer-source strong { color: var(--ink); }
 
+/* Loading and transient feedback */
 .loading-layer { position: fixed; inset: 0; z-index: 200; background: rgba(244,241,233,.92); backdrop-filter: blur(5px); display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .loader-piece-track { position: relative; width: 112px; height: 70px; overflow: hidden; }
 .loader-piece { position: absolute; inset: 0; color: var(--forest); display: grid; place-items: center; font-size: 55px; line-height: 1; opacity: 0; transform: translateX(-48px); }
@@ -528,6 +537,7 @@ footer > p { flex: 1; } footer > div { display: flex; gap: 12px; } footer a:hove
 @keyframes pieceSlide { 0% { opacity: 0; transform: translateX(-48px); } 22%, 72% { opacity: 1; transform: translateX(0); } 100% { opacity: 0; transform: translateX(48px); } }
 @keyframes toastIn { from { opacity:0; transform:translateY(8px); } }
 
+/* Responsive adaptations */
 @media (max-width: 1050px) {
   .hero { grid-template-columns: 1fr .7fr; gap: 45px; }
   .hero h1 { font-size: 64px; }

@@ -131,6 +131,20 @@ Reglas de presentación:
 - Una instancia del MVP puede mantener una caché temporal local; si se escala a varias instancias habrá que introducir un almacenamiento compartido.
 - Sin componente “Motor IA” ni cola de redacción de informes.
 
+### 4.1 Organización implementada
+
+El backend aplica una arquitectura por capas deliberadamente ligera:
+
+1. `main.py` actúa como **raíz de composición** y conecta implementaciones concretas de proveedores, almacén y servicios.
+2. `app_factory.py`, `config.py` y `security.py` construyen la aplicación y resuelven preocupaciones transversales sin mezclarlas con casos de uso.
+3. `routers/` adapta HTTP a llamadas de aplicación; no contiene scraping, cálculos ni persistencia.
+4. `services/` coordina los casos de uso y las reglas deterministas. Recibe sus dependencias mediante el constructor para poder probarlas de forma aislada.
+5. `providers/` encapsula cada servicio externo y convierte sus respuestas a modelos comunes.
+
+En el frontend, `app.js` es la raíz de composición de la SPA. Los controladores `DossierController`, `GameViewerController`, `OtbController`, `PgnImportController` y `EloCalculatorController` encapsulan los eventos y el renderizado de cada capacidad. El motor, el análisis y el modo explorar permanecen como módulos especializados y reutilizables. Las utilidades de formato, traducción, peticiones y diálogos se inyectan desde `app.js`, evitando dependencias implícitas entre capacidades.
+
+Esta separación sigue SOLID sin añadir una clase por cada operación: una clase representa un caso de uso o una frontera con estado; los cálculos puros y parsers permanecen como funciones cuando no necesitan identidad ni ciclo de vida.
+
 ---
 
 ## 5. Capa de proveedores — patrón central
@@ -248,20 +262,22 @@ El visor ejecuta Stockfish en un Web Worker del navegador, sin bloquear la API n
 
 | Función / capacidad | Componente |
 |---|---|
-| Buscar rival online | SPA + `GET /players/search` + proveedores Lichess/Chess.com |
-| Buscar rival OTB | SPA + ficha FIDE + historial de ratings + resultados Info64 |
-| Ingesta de partidas | Capa de proveedores + pipeline temporal |
-| **Estadísticas** | Motor de Estadísticas + páginas `/players/[source]/[external_id]` (tabs/secciones) |
-| **Visor paso a paso** | `GET /games/{source}/{game_id}` + `chess.js` + tablero HTML/CSS |
-| De stats → partidas | Query `games?opening=…&color=…&dataset_id=…` → click → visor |
-| Importación PGN | Sección independiente → dataset temporal nuevo → mismo pipeline de normalización |
+| Buscar rival online | `DossierController` + `OnlinePlayerService` + proveedores Lichess/Chess.com |
+| Buscar rival OTB | `OtbController` + `OtbLookupService` + proveedores FIDE/Info64 |
+| Ingesta de partidas | `DatasetService` / `OnlinePlayerService` + parser PGN + `DatasetStore` |
+| **Estadísticas** | `services/stats.py` + rutas de jugadores/datasets + `DossierController` |
+| **Visor paso a paso** | `GameViewerController` + `GET /games/{source}/{game_id}` + `chess.js` |
+| De stats → partidas | Filtros del dossier → lista cronológica → `GameViewerController` |
+| Importación PGN | `PgnImportController` + `DatasetService` → dataset temporal independiente |
+| Calculadora Elo | `EloCalculatorController` + `EloCalculatorService` + reglas puras de `services/elo.py` |
+| Seguridad HTTP | `security.py` + configuración tipada en `config.py` |
 | Auth / preferencias (futuro) | `User` + cookies de sesión |
 
-Módulos secundarios (comparador, calculadoras Elo, dashboard) solo si no distraen de los dos pilares; no son MVP.
+La calculadora Elo ya forma parte del MVP. Comparadores adicionales y dashboard continúan fuera de alcance mientras no aporten al flujo de preparación.
 
 ---
 
-## 10. API — endpoints principales (borrador)
+## 10. API — endpoints principales
 
 Prefijo: `/api/v1`.
 
@@ -278,7 +294,6 @@ GET  /api/v1/games/{source}/{external_id}/moves   # opcional: lista de SAN/FEN
 GET  /api/v1/players/{source}/{external_id}/stats?mode=online|otb|combined
 GET  /api/v1/players/{source}/{external_id}/stats/by-color
 GET  /api/v1/players/{source}/{external_id}/stats/openings?color=white|black
-GET  /api/v1/players/{source}/{external_id}/stats/pieces  # piezas relevantes / actividad
 
 # PGN temporal
 POST /api/v1/datasets                              # crea un dossier PGN independiente con TTL
@@ -289,11 +304,16 @@ GET  /api/v1/datasets/{dataset_id}/stats
 GET  /api/v1/fide/players/{fide_id}                # identidad, ratings e historial mensual
 GET  /api/v1/fide/players/{fide_id}/info64-results?from=&to=
 
+# Calculadora FIDE
+POST /api/v1/elo/head-to-head                       # variación con lista mensual actual
+POST /api/v1/elo/initial                            # Elo inicial con periodo por rival
+
 # Futuro, cuando existan trabajos asíncronos o cuentas
 GET  /api/v1/jobs/{id}/events                      # SSE
 POST /api/v1/auth/login | logout | me
 
 # Opcional post-MVP
+GET  /api/v1/players/{source}/{external_id}/stats/pieces
 GET  /api/v1/games/{source}/{external_id}/engine-analysis
 ```
 
@@ -320,6 +340,26 @@ Internet → CDN / reverse proxy (TLS)
 
 Móvil: responsive; sin app store. PWA opcional más adelante.
 
+### 11.1 Estado de validación del despliegue
+
+Tras la separación del backend y los controladores del frontend se han validado 49 pruebas automatizadas, la compilación de todos los módulos Python, la sintaxis de los 11 archivos JavaScript y la entrega HTTP de todos los recursos declarados en `index.html`. El contrato OpenAPI conserva los 18 endpoints públicos existentes antes de la refactorización.
+
+Los archivos Docker también se han adaptado: la imagen de API incluye `web/js` y `web/vendor`, mientras que la imagen Nginx continúa publicando esos directorios y redirigiendo `/api`. Sin embargo, el equipo donde se realizó esta revisión no dispone del ejecutable Docker. Por ello, la siguiente comprobación sigue pendiente y debe hacerse en un entorno con Docker instalado:
+
+```bash
+docker compose up --build
+```
+
+Lista de comprobación posterior al arranque:
+
+1. `GET http://localhost:8000/api/v1/health` responde con `status: ok`.
+2. `http://localhost:3000` carga sin recursos JavaScript o WASM con error 404.
+3. El ejemplo ficticio abre el dossier y una partida en el visor.
+4. Stockfish carga al activar **Analizar** y puede iniciar el modo **Explorar**.
+5. Las consultas externas muestran errores controlados si un proveedor no está disponible.
+
+Este pendiente es de validación del empaquetado, no un defecto funcional conocido. El arranque directo con Python y el contrato HTTP sí están cubiertos por la batería automatizada.
+
 ---
 
 ## 12. Escalabilidad futura
@@ -337,12 +377,13 @@ Móvil: responsive; sin app store. PWA opcional más adelante.
 
 ## 13. Próximos pasos
 
-1. Desplegar una preview HTTPS y validar el flujo completo en escritorio y móvil.
-2. Añadir observabilidad de errores y tiempos de respuesta de Lichess, Chess.com, FIDE e Info64.
-3. Evaluar caché temporal del perfil e historial FIDE para reducir consultas repetidas sin introducir persistencia permanente.
-4. Ampliar las fuentes OTB únicamente cuando exista una API, descarga o permiso de uso claro.
-5. Refinar métricas deterministas y exportaciones reutilizando los datasets ya normalizados.
-6. Considerar PostgreSQL, Redis/trabajos asíncronos y cuentas solo cuando aparezca una necesidad real de persistencia o escala.
+1. Construir y arrancar las imágenes Docker, completando la lista de comprobación de la sección 11.1.
+2. Desplegar una preview HTTPS y validar el flujo completo en escritorio y móvil.
+3. Añadir observabilidad de errores y tiempos de respuesta de Lichess, Chess.com, FIDE e Info64.
+4. Evaluar caché temporal del perfil e historial FIDE para reducir consultas repetidas sin introducir persistencia permanente.
+5. Ampliar las fuentes OTB únicamente cuando exista una API, descarga o permiso de uso claro.
+6. Refinar métricas deterministas y exportaciones reutilizando los datasets ya normalizados.
+7. Considerar PostgreSQL, Redis/trabajos asíncronos y cuentas solo cuando aparezca una necesidad real de persistencia o escala.
 
 ---
 

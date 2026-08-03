@@ -13,7 +13,7 @@ from api.app.services.text import clean_identifier, clean_untrusted_text
 
 
 BASE_URL = "https://api.chess.com"
-USER_AGENT = "ChessPrep/1.0 (public chess preparation tool; github.com/villarrubi/Chess-Tournament-Assistant)"
+USER_AGENT = "ChessPrep/1.0 (public chess preparation tool; github.com/villarrubi/ChessPrep)"
 MAX_RESPONSE_BYTES = 12_000_000
 
 
