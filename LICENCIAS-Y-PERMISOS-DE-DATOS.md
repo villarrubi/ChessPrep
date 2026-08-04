@@ -153,5 +153,5 @@ Una fuente solo podrá activarse cuando estén registrados:
 
 ---
 
-**Documentación mantenida por:** Alejandro Villarrubia  
+**Documentación mantenida por:** Alejandro Villarrubia, Gonzalo José Colina y Francisco Javier Juárez  
 **Contacto:** [Ver README.md](README.md)
