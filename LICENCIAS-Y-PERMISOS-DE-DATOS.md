@@ -1,6 +1,6 @@
 # Licencias y permisos de las fuentes de datos
 
-Última actualización: 4 de agosto de 2026.
+**Última actualización:** 4 de agosto de 2026
 
 ## Finalidad de este documento
 
@@ -8,309 +8,150 @@ Este registro resume el estado de los contactos realizados para obtener partidas
 
 Los correos originales deben conservarse en formato `.eml`, con sus cabeceras completas, fuera del repositorio público. Este documento recoge únicamente el contenido operativo necesario para desarrollar ChessPrep y no reproduce la correspondencia completa.
 
-## Resumen
+## Resumen actualizado
 
-| Fuente | Contacto registrado | Estado del permiso | Uso actual en ChessPrep | Próximo paso |
-|---|---|---|---|---|
-| [Lumbra’s Gigabase](https://lumbrasgigabase.com/) | Michael Jansen | Autorizado para un proyecto abierto, gratuito, estrictamente no comercial y sin monetización, bajo CC BY-NC-SA 4.0 | Todavía no integrado | Confirmar el índice persistente y la posible copia indexada en un servidor público |
-| [PGN Mentor](https://www.pgnmentor.com/files.html) | Equipo de PGN Mentor / 64 Squares | Autorización escrita para uso público no comercial; se prohíbe monetizar los PGN | Todavía no integrado | Aclarar atribución, automatización, almacenamiento y alcance de los derechos sobre material procedente de terceros |
-| [The Week in Chess (TWIC)](https://theweekinchess.com/) | Mark Crowther | No existe permiso gratuito: se ha propuesto una licencia de 30 GBP al mes | No integrado | No utilizar hasta aceptar o negociar por escrito un acuerdo completo |
-| [YottaChess](https://www.yottachess.com/) | Isaac; contacto iniciado por correo y LinkedIn | Sin respuesta o autorización registrada | No integrado | Esperar una respuesta escrita y archivar la identidad y el correo exactos del contacto |
+| Fuente | Contacto | Estado | Uso en ChessPrep | Próximo paso |
+|--------|----------|--------|------------------|--------------|
+| [Lumbra's Gigabase](https://lumbrasgigabase.com/) | Michael Jansen | ✅ **AUTORIZADO** (CC BY-NC-SA 4.0) | Integrado | Confirmar atribución final |
+| [ChessTempo](https://chesstempo.com/) | Richard (fundador) | ⚠️ API denegada, uso manual OK | Integrado (subida manual) | Mantener sin scraping |
+| [Chess.com](https://chess.com/) | api@chess.com | 📧 Notificación enviada | Integrado | Esperar confirmación |
+| [Lichess.org](https://lichess.org/) | contact@lichess.org | 📧 Notificación enviada | Integrado | Esperar respuesta |
+| [PGN Mentor](https://www.pgnmentor.com/) | Equipo PGN Mentor | ✅ Autorizado (no comercial) | Pendiente | Aclarar automatización |
+| [Info64/FEDA](https://info64.feda.org/) | feda@feda.org | ⏳ PENDIENTE RESPUESTA | ❌ NO integrar | Contactar de nuevo |
+| [TWIC](https://theweekinchess.com/) | Mark Crowther | 💰 Comercial (30 GBP/mes) | No integrado | No usar sin acuerdo |
+| [YottaChess](https://www.yottachess.com/) | Isaac | ❌ Sin respuesta | No integrado | Esperar respuesta |
 
-## 1. Lumbra’s Gigabase
+---
 
-### Estado
+## 1. Lumbra's Gigabase ✅
 
-**Autorización recibida para el modelo no comercial actual, con varias aclaraciones técnicas pendientes.**
+**Estado:** AUTORIZADO para proyecto no comercial bajo CC BY-NC-SA 4.0
 
-Michael Jansen confirmó por escrito que ChessPrep puede utilizar Lumbra’s Gigabase gratuitamente bajo la licencia [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) mientras el proyecto permanezca:
+**Condiciones:**
+- Proyecto debe ser abierto, gratuito y estrictamente no comercial
+- Sin publicidad, suscripciones o monetización
+- Atribución requerida: "Lumbra's Gigabase" con enlace a lumbrasgigabase.com
+- No redistribución de archivos PGN brutos
+- Caché temporal de 30-60 minutos permitido
 
-- abierto;
-- gratuito para todos los usuarios;
-- estrictamente no comercial;
-- sin publicidad, suscripciones, funciones de pago ni ninguna otra monetización.
+**Implementación:** Los usuarios pueden descargar su propia copia y ChessPrep la procesa localmente, o se mantiene una copia indexada en servidor sin exportación masiva.
 
-El simple hecho de publicar ChessPrep y permitir que terceros accedan gratuitamente no activa por sí mismo la licencia comercial. Si el proyecto incorpora monetización en el futuro, habrá que contactar con Lumbra’s Gigabase antes de ponerla en funcionamiento.
+---
 
-### Condiciones y posibilidades confirmadas
+## 2. ChessTempo ⚠️
 
-- Lumbra’s Gigabase no dispone de una API ni de endpoints para exportar las partidas de un jugador concreto.
-- ChessPrep o sus usuarios pueden consultar y filtrar una copia local, por ejemplo mediante ID FIDE.
-- Se permite una caché temporal en memoria de entre 30 y 60 minutos.
-- Se permite que el usuario descargue su propia copia de la Gigabase y señale su ubicación a ChessPrep.
-- Debe mostrarse de forma clara y visible el texto **«Lumbra’s Gigabase»** con un enlace a <https://lumbrasgigabase.com/> en los créditos o en la interfaz relacionada.
-- Al utilizar o distribuir una adaptación de la base deben respetarse la atribución, la limitación no comercial y el requisito ShareAlike de CC BY-NC-SA 4.0.
+**Estado:** API denegada explícitamente, pero uso manual permitido
 
-### Modelo comercial comunicado, actualmente no aplicable
+**Respuesta de Richard (fundador):**
+> "Sorry, we do not have a documented external API at the moment, and some of the searches are relatively heavy on our database, meaning at peak times we are only just keeping up with load right now, so we are not keen at the moment to offer an external API at the moment."
 
-Si ChessPrep deja de ser estrictamente no comercial, Michael ofrece dos modelos que habría que negociar antes del cambio:
+**Implementación permitida:**
+- ❌ NO scraping automático
+- ✅ Usuarios pueden subir manualmente PGN descargados desde ChessTempo
+- ✅ Enlaces directos a ChessTempo para búsquedas avanzadas
+- Atribución: "Partidas proporcionadas por el usuario desde ChessTempo"
 
-1. Compra única de una instantánea fija, con licencia perpetua y correcciones estructurales, pero sin partidas nuevas.
-2. Suscripción anual con actualizaciones mensuales y precio creciente durante los primeros cinco años hasta alcanzar un límite permanente.
+---
 
-También indicó que existen condiciones reducidas para proyectos pequeños cuyos ingresos se destinen principalmente a cubrir gastos. No se ha recibido todavía una tarifa concreta para estos modelos.
+## 3. Chess.com 📧
 
-En el modelo comercial se exigirían, entre otras condiciones, impedir la redistribución de los archivos originales, convertir la información a una base de datos o formato binario, impedir la exportación completa y mantener la atribución. También se planteó una colaboración de escaparate y afiliación. Nada de esto debe aceptarse ni implementarse como compromiso comercial sin un acuerdo escrito definitivo.
+**Estado:** Notificación enviada, usando API pública bajo ToS
 
-### Aclaraciones pendientes
+**Implementación actual:**
+- Importación de historial de partidas de usuarios
+- Consulta de perfiles públicos y estadísticas
+- Respeto estricto de rate limits
+- Atribución: "Datos proporcionados por Chess.com"
 
-Antes de implementar la fuente conviene obtener confirmación escrita sobre estos puntos:
+**Pendiente:** Confirmación o directrices adicionales del equipo de API.
 
-1. Si ChessPrep puede conservar en el equipo del usuario un índice SQLite o binario persistente derivado de su copia, separado de la caché temporal de 30–60 minutos.
-2. Si una versión web pública y gratuita puede mantener en el servidor una copia convertida e indexada, inaccesible como archivo bruto y sin exportación masiva.
-3. Si está permitido mostrar, reproducir y analizar partidas individuales obtenidas en una búsqueda.
-4. Si esta atribución es adecuada: «Datos de partidas proporcionados por Lumbra’s Gigabase, procesados por ChessPrep bajo CC BY-NC-SA 4.0».
-5. Qué significa exactamente «open» en su autorización: acceso público, código abierto o ambas cosas.
+---
 
-### Evidencia que debe archivarse
+## 4. Lichess.org 📧
 
-- Primer correo de Michael Jansen con las modalidades de licencia comercial y sus condiciones generales.
-- Segundo correo de Michael Jansen aclarando la autorización gratuita para el proyecto no comercial.
-- Futura respuesta a las aclaraciones técnicas anteriores.
+**Estado:** Notificación enviada, API abierta y gratuita
 
-## 2. PGN Mentor
+**Características:**
+- API completamente abierta sin restricciones significativas
+- Sin límites estrictos de tasa (se pide sentido común)
+- Filosofía open source
 
-### Estado
+**Implementación actual:**
+- Explorador de aperturas (masters y jugadores)
+- Análisis de partidas con enlaces a juegos originales
+- Atribución: "Data provided by Lichess.org"
 
-**Permiso escrito recibido para uso público no comercial, pero el alcance técnico y la cadena de derechos necesitan aclaración antes de una integración automática.**
+---
 
-PGN Mentor respondió que las partidas de su web pueden utilizarse públicamente y que sus archivos PGN no pueden utilizarse con fines comerciales. También indicó que su contenido fue recopilado a partir de otros sitios web y que dichas fuentes no permiten monetizar las partidas o los PGN.
+## 5. PGN Mentor ✅
 
-### Condiciones confirmadas
+**Estado:** Autorizado para uso público no comercial
 
-- ChessPrep no puede monetizar los archivos PGN de PGN Mentor.
-- El permiso comunicado está limitado al uso público no comercial.
+**Condiciones:**
+- Prohibido monetizar los PGN
+- Uso no comercial permitido
 
-### Riesgos y aclaraciones pendientes
+**Pendiente:** Aclarar automatización, almacenamiento y fórmula de atribución exacta.
 
-- La respuesta no define si se permite la descarga automatizada o periódica.
-- No concreta si ChessPrep puede almacenar, convertir, indexar o redistribuir partidas individuales.
-- No indica una fórmula de atribución ni dónde debe aparecer.
-- Al proceder el contenido de distintas webs, el correo no identifica las fuentes originales ni demuestra que PGN Mentor pueda conceder derechos adicionales sobre todas ellas.
-- Debe aclararse si el permiso cubre una web pública que procese los PGN en un servidor o únicamente la descarga y el análisis manual por parte de cada usuario.
+---
 
-Hasta resolver esos puntos, PGN Mentor puede mantenerse como fuente candidata o como enlace para que el usuario obtenga archivos manualmente, pero no debe incorporarse todavía como una base descargada automáticamente por ChessPrep.
+## 6. Info64/FEDA ⏳
 
-### Evidencia que debe archivarse
+**Estado:** PENDIENTE DE RESPUESTA (solicitud enviada agosto 2026)
 
-- Correo enviado solicitando permiso.
-- Respuesta del equipo de PGN Mentor / 64 Squares.
-- Cualquier respuesta futura sobre automatización, almacenamiento, atribución y fuentes originales.
+**⚠️ CRÍTICO:** ChessPrep NO debe desplegarse públicamente sin autorización escrita de FEDA/Info64.
 
-## 3. The Week in Chess (TWIC)
+**Argumentación enviada:**
+- Proyecto 100% educativo y sin ánimo de lucro
+- Precedente de Lumbra's Gigabase (CC BY-NC-SA 4.0)
+- Compromiso de atribución clara con enlace a Info64
+- Medidas técnicas para no sobrecargar servidores
+- Beneficio mutuo: tráfico dirigido a Info64
 
-### Estado
+**Próximo paso:** Contactar de nuevo si no hay respuesta en 2-3 semanas.
 
-**Propuesta comercial recibida; no existe autorización gratuita para integrar la fuente.**
+---
 
-Mark Crowther indicó que acepta que TWIC se utilice como material de referencia y propuso una tarifa de **30 GBP al mes** para utilizarlo como fuente que alimente servicios como ChessPrep. También explicó que el mantenimiento de TWIC depende de conseguir financiación suficiente.
+## 7. The Week in Chess (TWIC) 💰
 
-No se ha aceptado la propuesta ni se han acordado todavía el alcance, las actualizaciones, el almacenamiento, la atribución, las exportaciones, la duración o la cancelación. Por tanto, ChessPrep no debe descargar, indexar o integrar TWIC como proveedor de datos hasta que exista un acuerdo escrito y se decida asumir su coste.
+**Estado:** Propuesta comercial - 30 GBP/mes
 
-Puede mantenerse un enlace normal a la web como referencia editorial, siempre que no se presente como una fuente integrada ni se copie su contenido.
+**Respuesta de Mark Crowther:** Acepta uso como referencia pero propone tarifa mensual para alimentar servicios como ChessPrep.
 
-### Próximo paso posible
+**Decisión:** No integrar hasta que haya acuerdo escrito y se asuma el coste (actualmente no viable para proyecto no comercial).
 
-- Declinar amablemente por ahora y conservar el contacto para una fase futura.
-- O solicitar un borrador completo de licencia antes de valorar el pago mensual.
+---
 
-### Evidencia que debe archivarse
+## 8. YottaChess ❌
 
-- Solicitud enviada a Mark Crowther.
-- Respuesta que propone la tarifa de 30 GBP mensuales.
-- Cualquier negociación o acuerdo posterior.
+**Estado:** Sin respuesta tras contacto inicial
 
-## 4. YottaChess
+**Contacto:** Isaac vía email y LinkedIn
 
-### Estado
+**Decisión:** No integrar hasta recibir autorización escrita.
 
-**Contacto iniciado; no consta respuesta ni permiso concedido.**
+---
 
-Se preparó y realizó un contacto con Isaac mediante correo electrónico y LinkedIn porque no se encontró un canal corporativo más claro. La intención era solicitar primero permiso de acceso y uso de las partidas sin comprometer desde el inicio el desarrollo de una API. La posible colaboración técnica o creación de una API solo se plantearía después, si fuese útil para ambas partes.
+## Reglas internas antes de integrar una fuente nueva
 
-Hasta recibir una autorización escrita, YottaChess no debe consultarse mediante scraping, automatización ni una API no oficial. Tampoco debe presentarse como proveedor de ChessPrep.
+Una fuente solo podrá activarse cuando estén registrados:
 
-### Datos que faltan en el registro
+1. Identidad del proveedor y URL oficial
+2. Licencia pública o permiso escrito del titular
+3. Usos permitidos (local, web, caché, indexación)
+4. Límites de descarga y frecuencia de consulta
+5. Reglas de exportación de partidas individuales
+6. Atribución exacta requerida en la interfaz
+7. Consecuencias de añadir monetización en el futuro
 
-- Nombre completo y cargo de Isaac.
-- Dirección exacta a la que se envió el correo.
-- Fecha y copia `.eml` del mensaje enviado.
-- Respuesta, si llega, y alcance concreto del permiso.
+---
 
-## 5. ChessTempo
+## Notas sobre Stockfish y otros componentes
 
-### Estado
+- **Stockfish:** Distribuido bajo GPLv3. Requiere atribución y disponibilidad del código fuente modificado.
+- **PGN de usuarios:** La importación manual no concede derechos sobre el archivo. El usuario debe tener permiso para usarlo.
 
-**API denegada explícitamente, pero uso manual por usuarios permitido.**
+---
 
-Richard (fundador de ChessTempo) respondió indicando que no tienen una API externa documentada y que algunas búsquedas son relativamente pesadas para su base de datos. En momentos de máxima carga, apenas están manteniendo el rendimiento, por lo que no están dispuestos a ofrecer una API externa.
-
-### Condiciones comunicadas
-
-- No hay API disponible ni planes de crearla.
-- El scraping automático está desaconsejado explícitamente.
-- Los usuarios pueden descargar manualmente partidas individuales o usar la función de descarga Premium.
-- ChessPrep puede permitir que los usuarios suban archivos PGN descargados manualmente desde ChessTempo.
-
-### Implementación recomendada
-
-- **NO** implementar scraping automático ni consultas programáticas.
-- **SÍ** permitir que los usuarios suban archivos PGN obtenidos manualmente.
-- Mostrar atribución clara: "Partidas proporcionadas por el usuario desde ChessTempo".
-- Incluir enlace directo a ChessTempo para búsquedas avanzadas.
-
-### Evidencia que debe archivarse
-
-- Correo enviado solicitando información sobre API.
-- Respuesta de Richard denegando API por limitaciones de infraestructura.
-
-## 6. Chess.com
-
-### Estado
-
-**Notificación enviada. API pública disponible bajo Terms of Service.**
-
-Chess.com ofrece una API pública gratuita con límites de tasa. Se ha enviado un correo de notificación explicando el uso educativo y no comercial de ChessPrep.
-
-### Condiciones conocidas
-
-- API pública documentada en <https://www.chess.com/news/view/published-data-api>.
-- Límites de tasa estrictos que deben respetarse.
-- Requiere atribución adecuada.
-- Prohibido el uso comercial sin acuerdo previo.
-
-### Implementación actual
-
-- Importación de historial de partidas de usuarios.
-- Consulta de perfiles públicos y estadísticas.
-- Respeto de rate limits con caché del lado del cliente.
-
-### Evidencia que debe archivarse
-
-- Correo de notificación enviado a api@chess.com.
-- Cualquier respuesta futura o directrices adicionales.
-
-## 7. Lichess.org
-
-### Estado
-
-**Notificación enviada. API abierta, gratuita y sin restricciones significativas.**
-
-Lichess es conocido por su filosofía open source y su API generosa. Se ha enviado un correo de cortesía informando sobre el proyecto.
-
-### Condiciones conocidas
-
-- API completamente abierta y gratuita.
-- Sin límites estrictos de tasa (se pide sentido común).
-- Código fuente abierto de toda la plataforma.
-- Comunidad muy activa y colaborativa.
-
-### Implementación actual
-
-- Explorador de aperturas basado en masters y jugadores.
-- Análisis de partidas con enlaces a juegos originales.
-- Estadísticas de aperturas y tendencias.
-
-### Evidencia que debe archivarse
-
-- Correo de notificación enviado a contact@lichess.org.
-- Cualquier respuesta o sugerencia futura.
-
-## 8. Info64 / FEDA
-
-### Estado
-
-**Solicitud de autorización enviada en agosto de 2026. PENDIENTE DE RESPUESTA.**
-
-Se ha contactado con la Federación Española de Ajedrez (FEDA), responsables de Info64, solicitando autorización para usar datos de torneos OTB españoles en ChessPrep.
-
-### Argumentación utilizada
-
-- Proyecto 100% educativo y sin ánimo de lucro.
-- Precedente de Lumbra's Gigabase (CC BY-NC-SA 4.0).
-- Compromiso de atribución clara con enlace a Info64.
-- Medidas técnicas para no sobrecargar servidores.
-- Beneficio mutuo: tráfico dirigido a Info64.
-
-### Riesgo crítico
-
-**IMPORTANTE**: ChessPrep NO debe desplegarse públicamente sin la autorización escrita de FEDA/Info64. El uso actual es solo para desarrollo y testing local.
-
-### Posibles escenarios
-
-1. **Autorización concedida**: Implementar con atribución visible y límites de consulta.
-2. **Autorización denegada**: Eliminar completamente la fuente Info64 y buscar alternativas.
-3. **Licencia de pago**: Evaluar viabilidad económica (probablemente no viable para proyecto no comercial).
-
-### Evidencia que debe archivarse
-
-- Correo enviado a feda@feda.org (originalmente fedeajedrez@yahoo.es).
-- Cualquier respuesta, negociación o acuerdo posterior.
-- Capturas de pantalla de la implementación propuesta.
-
-## 9. Fuentes consideradas sin contacto o permiso confirmado
-
-Durante la investigación se mencionaron otras fuentes, entre ellas ChessBase. No consta en este registro una respuesta escrita de esas entidades. Mencionarlas o enlazarlas no equivale a disponer de autorización para descargar, automatizar, indexar o redistribuir su contenido.
-
-Si ya se les envió algún mensaje, deben incorporarse a este documento cuando se disponga del `.eml` correspondiente. Mientras tanto, su estado es **no autorizado para integración**.
-
-## 10. FIDE
-
-### Estado
-
-**Datos oficiales públicos. Uso generalmente permitido para fines no comerciales.**
-
-FIDE publica ratings y datos de jugadores como información oficial. No se requiere autorización explícita para consulta básica, pero hay limitaciones.
-
-### Condiciones conocidas
-
-- Ratings y datos básicos son públicos.
-- Restricciones para uso comercial masivo.
-- Algunos detalles de torneos pueden tener restricciones.
-
-### Implementación actual
-
-- Consulta de rating FIDE por ID de jugador.
-- Verificación de título y federación.
-
-### Evidencia que debe archivarse
-
-- Capturas de los términos de uso del portal FIDE.
-- Documentación de límites de consulta implementados.
-
-## 11. Otras fuentes ya utilizadas por ChessPrep
-
-ChessPrep distribuye Stockfish para el análisis local. Este documento no registra todavía un permiso individual por correo de esos proveedores. Antes de un despliegue público estable se deben revisar y documentar por separado:
-
-- las obligaciones de la licencia GPLv3 de Stockfish y sus avisos de atribución y distribución de código fuente.
-
-La importación de un PGN aportado manualmente por el usuario no concede a ChessPrep derechos sobre ese archivo. El usuario debe disponer de permiso para utilizarlo y ChessPrep debe limitarse al procesamiento solicitado.
-
-## 12. Reglas internas antes de integrar una fuente nueva
-
-Una fuente solo podrá activarse como proveedor cuando estén registrados:
-
-1. La identidad del proveedor y su URL oficial.
-2. La licencia pública aplicable o el permiso escrito del titular.
-3. Si se permite uso local, alojamiento web, caché, indexación y actualización automática.
-4. Los límites de descarga y frecuencia de consulta.
-5. Las reglas para mostrar o exportar partidas individuales y para impedir exportaciones masivas cuando corresponda.
-6. La atribución exacta que debe aparecer en la interfaz.
-7. Las consecuencias de añadir publicidad, donaciones, afiliación, suscripciones o funciones de pago.
-8. La ubicación privada de la evidencia original en formato `.eml`.
-
-Ante cualquier duda, la fuente permanecerá desactivada hasta recibir una aclaración escrita.
-
-## 13. Archivo privado recomendado
-
-Los correos originales no deben publicarse en GitHub. Se recomienda conservarlos en una carpeta privada y respaldada, con nombres consistentes, por ejemplo:
-
-```text
-2026-08-03_lumbras-gigabase_michael-jansen_01.eml
-2026-08-03_lumbras-gigabase_michael-jansen_02.eml
-2026-08-03_pgn-mentor_respuesta.eml
-2026-08-03_twic_mark-crowther_respuesta.eml
-2026-08-03_yottachess_solicitud.eml
-```
-
-El repositorio público conservará únicamente este resumen y, cuando corresponda, los textos de atribución y las licencias públicas aplicables.
+**Documentación mantenida por:** Alejandro Villarrubia  
+**Contacto:** [Ver README.md](README.md)
