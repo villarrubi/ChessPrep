@@ -319,6 +319,12 @@ tbody tr:hover { background: #f5f1e8; }
 footer { min-height: 92px; padding: 0 max(32px, calc((100% - 1300px)/2)); background: #0b1a17; color: #8b9c95; display: flex; align-items: center; gap: 32px; font-size: 9px; }
 .footer-brand { color: #e8e5dc; }.footer-brand .brand-mark { background: var(--cream); color: var(--forest); }
 footer > p { flex: 1; } footer > div { display: flex; gap: 12px; } footer a:hover { color: white; }
+.footer-credits { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; font-size: 8.5px; line-height: 1.5; }
+.footer-credits strong { color: #c9d4cf; }
+.footer-credits .data-sources { color: #7a8b84; }
+.footer-credits .data-sources a { color: #8b9c95; text-decoration: underline; text-underline-offset: 2px; }
+.footer-credits .data-sources a:hover { color: #e8e5dc; }
+#info64-attribution { color: #f4a460; font-weight: 600; }
 
 /* Dialog foundations and feature forms */
 .dialog-backdrop { position: fixed; inset: 0; z-index: 100; padding: 24px; background: rgba(7,18,15,.76); backdrop-filter: blur(7px); display: grid; place-items: center; animation: fadeIn .2s ease; }

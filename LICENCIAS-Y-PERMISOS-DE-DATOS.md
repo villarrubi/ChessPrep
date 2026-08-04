@@ -1,6 +1,6 @@
 # Licencias y permisos de las fuentes de datos
 
-Última actualización: 3 de agosto de 2026.
+Última actualización: 4 de agosto de 2026.
 
 ## Finalidad de este documento
 
@@ -137,24 +137,156 @@ Hasta recibir una autorización escrita, YottaChess no debe consultarse mediante
 - Fecha y copia `.eml` del mensaje enviado.
 - Respuesta, si llega, y alcance concreto del permiso.
 
-## 5. Fuentes consideradas sin contacto o permiso confirmado
+## 5. ChessTempo
 
-Durante la investigación se mencionaron otras fuentes, entre ellas ChessBase y ChessTempo. No consta en este registro una respuesta escrita de esas entidades. Mencionarlas o enlazarlas no equivale a disponer de autorización para descargar, automatizar, indexar o redistribuir su contenido.
+### Estado
+
+**API denegada explícitamente, pero uso manual por usuarios permitido.**
+
+Richard (fundador de ChessTempo) respondió indicando que no tienen una API externa documentada y que algunas búsquedas son relativamente pesadas para su base de datos. En momentos de máxima carga, apenas están manteniendo el rendimiento, por lo que no están dispuestos a ofrecer una API externa.
+
+### Condiciones comunicadas
+
+- No hay API disponible ni planes de crearla.
+- El scraping automático está desaconsejado explícitamente.
+- Los usuarios pueden descargar manualmente partidas individuales o usar la función de descarga Premium.
+- ChessPrep puede permitir que los usuarios suban archivos PGN descargados manualmente desde ChessTempo.
+
+### Implementación recomendada
+
+- **NO** implementar scraping automático ni consultas programáticas.
+- **SÍ** permitir que los usuarios suban archivos PGN obtenidos manualmente.
+- Mostrar atribución clara: "Partidas proporcionadas por el usuario desde ChessTempo".
+- Incluir enlace directo a ChessTempo para búsquedas avanzadas.
+
+### Evidencia que debe archivarse
+
+- Correo enviado solicitando información sobre API.
+- Respuesta de Richard denegando API por limitaciones de infraestructura.
+
+## 6. Chess.com
+
+### Estado
+
+**Notificación enviada. API pública disponible bajo Terms of Service.**
+
+Chess.com ofrece una API pública gratuita con límites de tasa. Se ha enviado un correo de notificación explicando el uso educativo y no comercial de ChessPrep.
+
+### Condiciones conocidas
+
+- API pública documentada en <https://www.chess.com/news/view/published-data-api>.
+- Límites de tasa estrictos que deben respetarse.
+- Requiere atribución adecuada.
+- Prohibido el uso comercial sin acuerdo previo.
+
+### Implementación actual
+
+- Importación de historial de partidas de usuarios.
+- Consulta de perfiles públicos y estadísticas.
+- Respeto de rate limits con caché del lado del cliente.
+
+### Evidencia que debe archivarse
+
+- Correo de notificación enviado a api@chess.com.
+- Cualquier respuesta futura o directrices adicionales.
+
+## 7. Lichess.org
+
+### Estado
+
+**Notificación enviada. API abierta, gratuita y sin restricciones significativas.**
+
+Lichess es conocido por su filosofía open source y su API generosa. Se ha enviado un correo de cortesía informando sobre el proyecto.
+
+### Condiciones conocidas
+
+- API completamente abierta y gratuita.
+- Sin límites estrictos de tasa (se pide sentido común).
+- Código fuente abierto de toda la plataforma.
+- Comunidad muy activa y colaborativa.
+
+### Implementación actual
+
+- Explorador de aperturas basado en masters y jugadores.
+- Análisis de partidas con enlaces a juegos originales.
+- Estadísticas de aperturas y tendencias.
+
+### Evidencia que debe archivarse
+
+- Correo de notificación enviado a contact@lichess.org.
+- Cualquier respuesta o sugerencia futura.
+
+## 8. Info64 / FEDA
+
+### Estado
+
+**Solicitud de autorización enviada en agosto de 2026. PENDIENTE DE RESPUESTA.**
+
+Se ha contactado con la Federación Española de Ajedrez (FEDA), responsables de Info64, solicitando autorización para usar datos de torneos OTB españoles en ChessPrep.
+
+### Argumentación utilizada
+
+- Proyecto 100% educativo y sin ánimo de lucro.
+- Precedente de Lumbra's Gigabase (CC BY-NC-SA 4.0).
+- Compromiso de atribución clara con enlace a Info64.
+- Medidas técnicas para no sobrecargar servidores.
+- Beneficio mutuo: tráfico dirigido a Info64.
+
+### Riesgo crítico
+
+**IMPORTANTE**: ChessPrep NO debe desplegarse públicamente sin la autorización escrita de FEDA/Info64. El uso actual es solo para desarrollo y testing local.
+
+### Posibles escenarios
+
+1. **Autorización concedida**: Implementar con atribución visible y límites de consulta.
+2. **Autorización denegada**: Eliminar completamente la fuente Info64 y buscar alternativas.
+3. **Licencia de pago**: Evaluar viabilidad económica (probablemente no viable para proyecto no comercial).
+
+### Evidencia que debe archivarse
+
+- Correo enviado a feda@feda.org (originalmente fedeajedrez@yahoo.es).
+- Cualquier respuesta, negociación o acuerdo posterior.
+- Capturas de pantalla de la implementación propuesta.
+
+## 9. Fuentes consideradas sin contacto o permiso confirmado
+
+Durante la investigación se mencionaron otras fuentes, entre ellas ChessBase. No consta en este registro una respuesta escrita de esas entidades. Mencionarlas o enlazarlas no equivale a disponer de autorización para descargar, automatizar, indexar o redistribuir su contenido.
 
 Si ya se les envió algún mensaje, deben incorporarse a este documento cuando se disponga del `.eml` correspondiente. Mientras tanto, su estado es **no autorizado para integración**.
 
-## 6. Fuentes ya utilizadas por ChessPrep sin correspondencia de permiso archivada
+## 10. FIDE
 
-ChessPrep consulta actualmente Lichess, Chess.com, FIDE e Info64 y distribuye Stockfish para el análisis local. Este documento no registra todavía un permiso individual por correo de esos proveedores. Antes de un despliegue público estable se deben revisar y documentar por separado:
+### Estado
 
-- los términos y límites de las API públicas de Lichess y Chess.com;
-- las condiciones aplicables a la consulta de perfiles e historial de rating de FIDE;
-- las condiciones aplicables a la extracción automatizada de participaciones y resultados de Info64;
+**Datos oficiales públicos. Uso generalmente permitido para fines no comerciales.**
+
+FIDE publica ratings y datos de jugadores como información oficial. No se requiere autorización explícita para consulta básica, pero hay limitaciones.
+
+### Condiciones conocidas
+
+- Ratings y datos básicos son públicos.
+- Restricciones para uso comercial masivo.
+- Algunos detalles de torneos pueden tener restricciones.
+
+### Implementación actual
+
+- Consulta de rating FIDE por ID de jugador.
+- Verificación de título y federación.
+
+### Evidencia que debe archivarse
+
+- Capturas de los términos de uso del portal FIDE.
+- Documentación de límites de consulta implementados.
+
+## 11. Otras fuentes ya utilizadas por ChessPrep
+
+ChessPrep distribuye Stockfish para el análisis local. Este documento no registra todavía un permiso individual por correo de esos proveedores. Antes de un despliegue público estable se deben revisar y documentar por separado:
+
 - las obligaciones de la licencia GPLv3 de Stockfish y sus avisos de atribución y distribución de código fuente.
 
 La importación de un PGN aportado manualmente por el usuario no concede a ChessPrep derechos sobre ese archivo. El usuario debe disponer de permiso para utilizarlo y ChessPrep debe limitarse al procesamiento solicitado.
 
-## 7. Reglas internas antes de integrar una fuente nueva
+## 12. Reglas internas antes de integrar una fuente nueva
 
 Una fuente solo podrá activarse como proveedor cuando estén registrados:
 
@@ -169,7 +301,7 @@ Una fuente solo podrá activarse como proveedor cuando estén registrados:
 
 Ante cualquier duda, la fuente permanecerá desactivada hasta recibir una aclaración escrita.
 
-## 8. Archivo privado recomendado
+## 13. Archivo privado recomendado
 
 Los correos originales no deben publicarse en GitHub. Se recomienda conservarlos en una carpeta privada y respaldada, con nombres consistentes, por ejemplo:
 
