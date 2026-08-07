@@ -66,7 +66,7 @@ def test_current_fide_list_parser_reads_rating_and_k(monkeypatch):
     }
 
 
-def test_historical_rapid_rating_uses_standard_fallback(monkeypatch):
+def test_historical_rapid_rating_uses_zero_when_missing(monkeypatch):
     monkeypatch.setattr(
         fide,
         "_get_rating_history",
@@ -77,9 +77,54 @@ def test_historical_rapid_rating_uses_standard_fallback(monkeypatch):
 
     result = fide.get_historical_rating("94711151", EloDiscipline.RAPID, "2025-01")
 
-    assert result["rating"] == 1712
+    assert result["rating"] == 0
+    assert result["rating_source"] == "rapid"
+    assert result["standard_fallback"] is False
+
+
+def test_historical_blitz_rating_uses_zero_when_missing(monkeypatch):
+    monkeypatch.setattr(
+        fide,
+        "_get_rating_history",
+        lambda *_, **__: [
+            FideRatingPoint(date="2025-Jan", rating=1712, rapid_rating=None, blitz_rating=None)
+        ],
+    )
+
+    result = fide.get_historical_rating("94711151", EloDiscipline.BLITZ, "2025-01")
+
+    assert result["rating"] == 0
+    assert result["rating_source"] == "blitz"
+    assert result["standard_fallback"] is False
+
+
+def test_historical_standard_rating_stays_none_when_missing(monkeypatch):
+    monkeypatch.setattr(
+        fide,
+        "_get_rating_history",
+        lambda *_, **__: [
+            FideRatingPoint(date="2025-Jan", rating=None, rapid_rating=1500, blitz_rating=1400)
+        ],
+    )
+
+    result = fide.get_historical_rating("94711151", EloDiscipline.STANDARD, "2025-01")
+
+    assert result["rating"] is None
     assert result["rating_source"] == "standard"
-    assert result["standard_fallback"] is True
+    assert result["standard_fallback"] is False
+
+
+def test_initial_rating_treats_missing_rapid_as_zero():
+    games = [
+        {"rating": 1600 if index else 0, "score": 1.0, "period": "2026-08"}
+        for index in range(5)
+    ]
+
+    calculation = calculate_initial_rating(games)
+
+    # Average includes the 0-rated opponent instead of a standard-Elo substitute.
+    assert calculation["average_rating"] == 1428.57
+    assert calculation["game_count"] == 5
 
 
 def test_manual_elo_endpoints_return_both_calculations():

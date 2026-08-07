@@ -79,14 +79,19 @@ def test_stockfish_18_lite_worker_and_wasm_are_served_locally():
     assert 'const ENGINE_CACHE_NAMESPACE = `stockfish-${ENGINE_VERSION}`' in engine_script
     assert 'global.STOCKFISH_ENGINE_NAME = "Stockfish 18 Lite"' in engine_script
     assert 'global.STOCKFISH_DEFAULT_NODES = DEFAULT_NODES' in engine_script
-    assert 'id="analysis-nodes" min="10" max="2000"' in client.get("/").text
+    assert "const STRENGTH_PRESETS = Object.freeze({" in engine_script
+    assert 'id="analysis-strength"' in client.get("/").text
+    assert 'option value="fast"' in client.get("/").text
+    assert 'option value="normal"' in client.get("/").text
+    assert 'option value="deep"' in client.get("/").text
+    assert 'id="analysis-nodes"' not in client.get("/").text
 
 
 def test_loader_cycles_all_pieces_without_disabling_its_timer():
     index = client.get("/").text
     script = client.get("/app.js").text
 
-    assert "/app.js?v=20260803-stockfish18-lite1" in index
+    assert "/app.js?v=20260807-debug-b3d4b7" in index
     assert 'const LOADER_PIECES = ["♙", "♘", "♗", "♖", "♕", "♔"];' in script
     assert "const LOADER_INTERVAL_MS = 450;" in script
     assert "window.setInterval(advanceLoaderPiece, LOADER_INTERVAL_MS)" in script
@@ -102,7 +107,7 @@ def test_language_switcher_and_elo_calculator_are_available():
     assert 'id="language-button"' in index
     assert 'id="language-menu"' in index
     assert index.count('data-language="') == 5
-    assert "/i18n.js?v=20260803-stockfish18-lite1" in index
+    assert "/i18n.js?v=20260807-strength-e4fix" in index
     assert 'const STORAGE_KEY = "chessprep_language";' in translations
     assert '{ code: "es"' in translations
     assert '{ code: "en"' in translations
@@ -216,7 +221,7 @@ def test_manual_moves_are_draggable_and_use_an_independent_engine():
     translations = client.get("/i18n.js").text
     styles = client.get("/styles.css").text
 
-    assert "/js/exploreMode.js?v=20260803-stockfish18-lite1" in index
+    assert "/js/exploreMode.js?v=20260807-debug-b3d4b7" in index
     assert 'id="explore-toggle"' not in index
     assert "exploreEngine = new global.StockfishEngine()" in viewer_script
     assert "new global.ExploreMode(exploreEngine)" in viewer_script
@@ -255,6 +260,8 @@ def test_stockfish_recommendation_and_manual_grading_share_one_reference():
     assert "go nodes ${safeNodes} searchmoves ${safeMove}" in engine_script
     assert "go searchmoves ${safeMove} nodes ${safeNodes}" not in engine_script
     assert 'this._post("setoption name Clear Hash")' in engine_script
+    assert "await this._syncPosition(fen)" in engine_script
+    assert "if (!sawSearchInfo && move !== \"(none)\") return false" in engine_script
     assert "position fen ${fen} moves ${moveUci}" not in engine_script
     assert "function mergeReferenceLines" in viewer_script
     assert "engine.analyzeFen(fen, { nodes, multipv: 1 })" in viewer_script
@@ -262,7 +269,10 @@ def test_stockfish_recommendation_and_manual_grading_share_one_reference():
     assert "state.analysis?.plies?.[state.ply - 1]?.bestUci" not in viewer_script
     assert 't("analysis.bestLine")' in viewer_script
     assert '"analysis.bestLine": "Mejor línea"' in translations
-    assert '"viewer.nodes": "Nodos (k)"' in translations
+    assert '"viewer.strength": "Fuerza"' in translations
+    assert '"viewer.strengthFast": "Rápido"' in translations
+    assert '"dynamic.engineReady": "Listo · {strength} · {count} {lines}"' in translations
+    assert '"viewer.nodes": "Nodos (k)"' not in translations
     assert "MoveQuality.winChanceLoss(best.score, playedScoreStm)" in analysis_script
     assert "MoveQuality.classifyWinLoss(winLoss" in analysis_script
     assert "function accuracyFromWinLosses" in quality_script

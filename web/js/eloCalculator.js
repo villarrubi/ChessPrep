@@ -296,8 +296,7 @@
         `<ul class="elo-warning-list">${payload.warnings.map((warning) => `<li>${this.escapeHtml(warning)}</li>`).join("")}</ul>` :
         `<p class="elo-result-note">${this.escapeHtml(this.t("elo.publishable"))}</p>`;
       const opponents = payload.games.map((game) => {
-        const fallback = game.standard_fallback ? ` · ${this.t("elo.standardFallback")}` : "";
-        return `<li><strong>${this.escapeHtml(game.name)}</strong><span>${this.escapeHtml(`${game.rating} · ${game.period}`)}</span><span>${this.escapeHtml(this.outcomeLabel(game.result) + fallback)}</span></li>`;
+        return `<li><strong>${this.escapeHtml(game.name)}</strong><span>${this.escapeHtml(`${game.rating} · ${game.period}`)}</span><span>${this.escapeHtml(this.outcomeLabel(game.result))}</span></li>`;
       }).join("");
       const container = this.$("#elo-initial-result");
       container.innerHTML =

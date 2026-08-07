@@ -100,7 +100,7 @@ class EloCalculatorService:
     def initial_rating(self, payload: EloInitialRequest) -> dict[str, object]:
         resolved_games = self._resolve_initial_games(payload)
         calculation = calculate_initial_rating(resolved_games)
-        warnings = self._initial_rating_warnings(calculation, resolved_games)
+        warnings = self._initial_rating_warnings(calculation)
         return {
             "discipline": payload.discipline,
             "games": resolved_games,
@@ -218,7 +218,6 @@ class EloCalculatorService:
     @staticmethod
     def _initial_rating_warnings(
         calculation: dict[str, object],
-        games: list[dict[str, object]],
     ) -> list[str]:
         warnings: list[str] = []
         if calculation["game_count"] < 5:
@@ -239,9 +238,4 @@ class EloCalculatorService:
             )
         if calculation["capped_at_2200"]:
             warnings.append("FIDE limita la valoración inicial máxima a 2200.")
-        if any(game["standard_fallback"] for game in games):
-            warnings.append(
-                "En rápido o blitz se utilizó el Elo estándar cuando el rival no "
-                "tenía Elo propio en esa lista."
-            )
         return warnings

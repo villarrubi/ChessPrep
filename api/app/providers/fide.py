@@ -286,17 +286,14 @@ def get_historical_rating(
         EloDiscipline.BLITZ: "blitz_rating",
     }[discipline]
     rating = getattr(point, field)
-    standard_fallback = False
-    rating_source = discipline.value
-    if rating is None and discipline != EloDiscipline.STANDARD and point.rating is not None:
-        rating = point.rating
-        rating_source = EloDiscipline.STANDARD.value
-        standard_fallback = True
+    # Missing rapid/blitz Elo counts as 0; do not fall back to standard.
+    if rating is None and discipline != EloDiscipline.STANDARD:
+        rating = 0
     return {
         "period": period,
         "rating": rating,
-        "rating_source": rating_source,
-        "standard_fallback": standard_fallback,
+        "rating_source": discipline.value,
+        "standard_fallback": False,
     }
 
 
