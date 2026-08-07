@@ -14,7 +14,7 @@
     <title>ChessPrep — Conoce el tablero antes de sentarte</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%2310231f%22/><text x=%2232%22 y=%2246%22 text-anchor=%22middle%22 font-size=%2242%22 fill=%22%23f4f1e9%22>♞</text></svg>" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="stylesheet" href="/styles.css?v=20260803-piece-drag1" />
+    <link rel="stylesheet" href="/styles.css?v=20260807-stockfish-live1" />
   </head>
   <body>
     <div class="page-shell">
@@ -407,9 +407,9 @@
               <strong>Partidas contra rivales evaluados</strong>
               <span>FIDE exige al menos cinco. El resultado siempre se introduce desde tu perspectiva.</span>
             </div>
-            <label for="elo-default-period"><span>Mes común</span><input class="text-field" id="elo-default-period" type="month" /></label>
+            <label for="elo-default-period"><span>Mes por defecto</span><input class="text-field" id="elo-default-period" type="month" /></label>
           </div>
-          <div class="elo-initial-head" aria-hidden="true"><span>Rival</span><span>Datos</span><span>Resultado</span><span>Mes y año</span><span></span></div>
+          <div class="elo-initial-head" aria-hidden="true"><span>Rival</span><span>Datos</span><span>Resultado</span><span>Mes de la partida</span><span></span></div>
           <div class="elo-initial-rows" id="elo-initial-rows"></div>
           <div class="elo-initial-actions">
             <button class="button button-ghost" id="add-elo-opponent" type="button">＋ Añadir rival</button>
@@ -475,8 +475,12 @@
               <div class="analysis-body" id="analysis-body" hidden>
                 <div class="analysis-settings" role="group" aria-label="Ajustes del motor">
                   <label class="analysis-setting">
-                    <span>Nodos (k)</span>
-                    <input type="number" id="analysis-nodes" min="10" max="2000" step="10" value="150" title="Presupuesto por búsqueda en miles de nodos (10–2000)" />
+                    <span>Fuerza</span>
+                    <select id="analysis-strength" title="Cuánto piensa el motor en cada posición">
+                      <option value="fast">Rápido</option>
+                      <option value="normal" selected>Normal</option>
+                      <option value="deep">Profundo</option>
+                    </select>
                   </label>
                   <label class="analysis-setting">
                     <span>Líneas</span>
@@ -534,19 +538,19 @@
     </div>
     <div class="toast-region" id="toast-region" aria-live="polite"></div>
 
-    <script src="/i18n.js?v=20260803-stockfish18-lite1" defer></script>
+    <script src="/i18n.js?v=20260807-stockfish-live1" defer></script>
     <script src="/js/storage.js?v=20260803-pwa-storage1" defer></script>
-    <script src="/js/moveQuality.js?v=20260803-stockfish18-lite1" defer></script>
-    <script src="/js/stockfishEngine.js?v=20260803-stockfish18-lite1" defer></script>
-    <script src="/js/gameAnalysis.js?v=20260803-stockfish18-lite1" defer></script>
-    <script src="/js/exploreMode.js?v=20260803-stockfish18-lite1" defer></script>
+    <script src="/js/moveQuality.js?v=20260807-stockfish-live1" defer></script>
+    <script src="/js/stockfishEngine.js?v=20260807-stockfish-live1" defer></script>
+    <script src="/js/gameAnalysis.js?v=20260807-stockfish-live1" defer></script>
+    <script src="/js/exploreMode.js?v=20260807-stockfish-live1" defer></script>
     <!-- Feature modules register their controllers; app.js composes them last. -->
-    <script src="/js/gameViewerController.js?v=20260803-stockfish18-lite1" defer></script>
-    <script src="/js/dossierController.js?v=20260803-stockfish18-lite1" defer></script>
-    <script src="/js/otbController.js?v=20260803-stockfish18-lite1" defer></script>
-    <script src="/js/pgnImportController.js?v=20260803-stockfish18-lite1" defer></script>
-    <script src="/js/eloCalculator.js?v=20260803-stockfish18-lite1" defer></script>
-    <script src="/app.js?v=20260803-stockfish18-lite1" defer></script>
+    <script src="/js/gameViewerController.js?v=20260807-stockfish-live1" defer></script>
+    <script src="/js/dossierController.js?v=20260807-stockfish-live1" defer></script>
+    <script src="/js/otbController.js?v=20260807-stockfish-live1" defer></script>
+    <script src="/js/pgnImportController.js?v=20260807-stockfish-live1" defer></script>
+    <script src="/js/eloCalculator.js?v=20260807-stockfish-live1" defer></script>
+    <script src="/app.js?v=20260807-stockfish-live1" defer></script>
     
     <!-- Service Worker para PWA -->
     <script>

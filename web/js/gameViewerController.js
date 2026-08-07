@@ -19,6 +19,7 @@
   let $$;
   let PIECES;
   let engine;
+  let liveEngine;
   let exploreEngine;
   let gameAnalysis;
   let explore;
@@ -41,6 +42,9 @@
       $$ = dependencies.$$;
       PIECES = dependencies.pieces;
       engine = new global.StockfishEngine();
+      // Live MultiPV lines use a dedicated worker so progressive game analysis
+      // does not serialize behind (or starve) the interactive recommendation.
+      liveEngine = new global.StockfishEngine();
       exploreEngine = new global.StockfishEngine();
       gameAnalysis = new global.GameAnalysisController(engine);
       explore = new global.ExploreMode(exploreEngine);
@@ -66,11 +70,11 @@
       $("#explore-undo").addEventListener("click", undoManualMove);
       $("#explore-exit").addEventListener("click", resetManualVariation);
       $("#eval-curve").addEventListener("click", handleEvalCurveClick);
-      ["analysis-nodes", "analysis-lines"].forEach((id) => {
+      ["analysis-strength", "analysis-lines"].forEach((id) => {
         const input = document.getElementById(id);
         input.addEventListener("change", () => {
           applyEngineSettingsFromInputs({
-            restartGameAnalysis: id === "analysis-nodes"
+            restartGameAnalysis: id === "analysis-strength"
           });
         });
         input.addEventListener("keydown", (event) => {
@@ -416,6 +420,8 @@
   } = {}) {
     gameAnalysis.clearActive();
     state.liveProbeId += 1;
+    try { liveEngine?.stop(); } catch { /* ignore */ }
+    try { liveEngine?.terminate(); } catch { /* ignore */ }
     if (explore.active) explore.exit();
     state.analysis = null;
     state.liveLines = [];
@@ -429,10 +435,23 @@
     renderAnalysisUi();
   }
 
+  function currentStrengthId() {
+    return global.stockfishStrengthForNodes(state.engineNodes);
+  }
+
+  function strengthLabel(strengthId = currentStrengthId()) {
+    const key = {
+      fast: "viewer.strengthFast",
+      normal: "viewer.strengthNormal",
+      deep: "viewer.strengthDeep",
+    }[strengthId] || "viewer.strengthNormal";
+    return t(key);
+  }
+
   function syncEngineSettingInputs() {
-    const nodesInput = $("#analysis-nodes");
+    const strengthInput = $("#analysis-strength");
     const linesInput = $("#analysis-lines");
-    if (nodesInput) nodesInput.value = String(Math.round(state.engineNodes / 1000));
+    if (strengthInput) strengthInput.value = currentStrengthId();
     if (linesInput) linesInput.value = String(state.engineLines);
   }
 
@@ -475,7 +494,7 @@
     }
     if (analysis.status === "complete") {
       el.textContent = t("dynamic.engineReady", {
-        nodes: formatNumber(state.engineNodes / 1000),
+        strength: strengthLabel(),
         count: state.engineLines,
         lines: t(state.engineLines === 1 ? "dynamic.line" : "dynamic.lines")
       });
@@ -484,7 +503,7 @@
     el.textContent = t("dynamic.engineAnalysing", {
       done: analysis.done,
       total: analysis.total,
-      nodes: formatNumber(state.engineNodes / 1000)
+      strength: strengthLabel()
     });
   }
 
@@ -598,28 +617,26 @@
     return state.liveLines.find((line) => line.multipv === state.selectedLine) || state.liveLines[0] || null;
   }
 
-  function mergeReferenceLines(fen, reference, alternatives, requestedLines) {
-    const referenceMove = reference.bestMove || reference.pv?.[0] || "";
-    const referencePv = reference.pv?.length ? reference.pv : (referenceMove ? [referenceMove] : []);
-    const lines = [{
-      multipv: 1,
-      score: reference.score,
-      pv: referencePv,
-      depth: reference.depth,
-      nodes: reference.nodes,
-    }];
-
-    if (requestedLines > 1) {
-      const distinctAlternatives = (alternatives?.lines || [])
-        .filter((line) => line.pv?.[0] && line.pv[0] !== referenceMove)
-        .slice(0, requestedLines - 1);
-      distinctAlternatives.forEach((line, index) => {
-        lines.push({ ...line, multipv: index + 2 });
-      });
+  function scoreNumStm(score) {
+    // Higher is better for the side to move (UCI scores are already STM-relative).
+    if (typeof score?.mate === "number") {
+      return score.mate > 0 ? 100000 - score.mate : -100000 - score.mate;
     }
+    return score?.cp ?? 0;
+  }
 
-    return lines.map((line) => ({
+  function formatLiveLines(fen, result, requestedLines) {
+    const source = (result?.lines || [])
+      .filter((line) => line?.pv?.[0])
+      .slice()
+      // Rank by STM score from the same MultiPV search so the UI never mixes
+      // evals from separate searches (which produced unordered alternatives).
+      .sort((a, b) => scoreNumStm(b.score) - scoreNumStm(a.score))
+      .slice(0, requestedLines);
+
+    return source.map((line, index) => ({
       ...line,
+      multipv: index + 1,
       sanPv: pvToSan(fen, line.pv),
       moveUci: line.pv?.[0] || "",
     }));
@@ -653,7 +670,7 @@
     }
     if (!state.liveLines.length) {
       el.innerHTML =
-        `<div class="analysis-line-empty">${escapeHtml(t("dynamic.calculatingLines", { count: state.engineLines, lines: t(state.engineLines === 1 ? "dynamic.line" : "dynamic.lines"), nodes: formatNumber(state.engineNodes / 1000) }))}</div>`;
+        `<div class="analysis-line-empty">${escapeHtml(t("dynamic.calculatingLines", { count: state.engineLines, lines: t(state.engineLines === 1 ? "dynamic.line" : "dynamic.lines"), strength: strengthLabel() }))}</div>`;
       return;
     }
     const side = (state.viewerGame?.fens[state.ply] || "").split(" ")[1] || "w";
@@ -691,18 +708,11 @@
     renderLiveLines();
     try {
       await loadChessScript();
-      // MultiPV can rank close moves differently from a single-PV search.
-      // The single-PV result is the authoritative recommendation and is also
-      // reused when a manual move is graded.
-      const reference = await engine.analyzeFen(fen, { nodes, multipv: 1 });
+      // One MultiPV search: avoids the old dual-search cost and keeps every
+      // displayed line's eval from the same node budget / depth snapshot.
+      const result = await liveEngine.analyzeFen(fen, { nodes, multipv });
       if (probeId !== state.liveProbeId || !state.analysisEnabled) return;
-      commitLiveLines(fen, mergeReferenceLines(fen, reference, null, 1));
-
-      if (multipv > 1) {
-        const alternatives = await engine.analyzeFen(fen, { nodes, multipv });
-        if (probeId !== state.liveProbeId || !state.analysisEnabled) return;
-        commitLiveLines(fen, mergeReferenceLines(fen, reference, alternatives, multipv));
-      }
+      commitLiveLines(fen, formatLiveLines(fen, result, multipv));
     } catch (error) {
       if (probeId !== state.liveProbeId) return;
       if (error.message === "Análisis cancelado" || error.message === "Motor detenido") return;
@@ -855,6 +865,7 @@
     $("#analysis-toggle").checked = enabled;
     if (!enabled) {
       state.liveProbeId += 1;
+      try { liveEngine.stop(); } catch { /* ignore */ }
       gameAnalysis.stop();
       if (explore.canUndo()) resetManualVariation();
       state.liveLines = [];
@@ -865,8 +876,8 @@
     }
     if (!state.viewerGame) return;
     renderAnalysisUi();
-    // Do not block the controls until the complete game has been analysed.
-    // Manual moves have a separate worker and can be evaluated immediately.
+    // Progressive game quality uses `engine`; live lines use `liveEngine` so
+    // recommendations stay responsive while the full game is still analysing.
     engine.terminate();
     void probeLiveLines();
     void gameAnalysis.start(state.viewerGame, {
@@ -900,11 +911,8 @@
   async function applyEngineSettingsFromInputs({
     restartGameAnalysis = false
   } = {}) {
-    const nextNodes = clampEngineSetting(
-      Number($("#analysis-nodes")?.value) * 1000,
-      STOCKFISH_MIN_NODES,
-      STOCKFISH_MAX_NODES,
-    );
+    const strengthId = $("#analysis-strength")?.value || global.STOCKFISH_DEFAULT_STRENGTH;
+    const nextNodes = global.stockfishNodesForStrength(strengthId);
     const nextLines = clampEngineSetting(
       $("#analysis-lines")?.value,
       STOCKFISH_MIN_LINES,

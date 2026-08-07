@@ -11,6 +11,12 @@
   const MIN_NODES = 10000;
   const MIN_LINES = 1;
   const POSITION_CACHE_LIMIT = 256;
+  const STRENGTH_PRESETS = Object.freeze({
+    fast: 50000,
+    normal: DEFAULT_NODES,
+    deep: 600000,
+  });
+  const DEFAULT_STRENGTH = "normal";
 
   // All StockfishEngine instances share completed position searches. The
   // interactive worker can therefore reuse the exact reference result shown
@@ -28,6 +34,7 @@
       this._listeners = new Set();
       this._requestId = 0;
       this._multipv = 1;
+      this._searching = false;
       this.name = "Stockfish 18 Lite";
     }
 
@@ -84,34 +91,43 @@
         return this._enqueue(async () => {
           const linesByPv = new Map();
           let bestMove = "";
+          let sawSearchInfo = false;
           if (this._multipv !== safeMulti) {
             this._post(`setoption name MultiPV value ${safeMulti}`);
             this._multipv = safeMulti;
           }
-          this._post("stop");
-          this._post("setoption name Clear Hash");
-          this._post(`position fen ${fen}`);
-          await this._sendAndWait(`go nodes ${safeNodes}`, (line) => {
-            if (line.startsWith("info ") && line.includes(" score ")) {
-              const parsed = parseInfoLine(line);
-              if (parsed.score && parsed.pv?.length) {
-                linesByPv.set(parsed.multipv || 1, {
-                  multipv: parsed.multipv || 1,
-                  score: parsed.score,
-                  pv: parsed.pv,
-                  depth: parsed.depth,
-                  nodes: parsed.nodes,
-                });
+          await this._syncPosition(fen);
+          this._searching = true;
+          try {
+            await this._sendAndWait(`go nodes ${safeNodes}`, (line) => {
+              if (line.startsWith("info ") && line.includes(" score ")) {
+                sawSearchInfo = true;
+                const parsed = parseInfoLine(line);
+                if (parsed.score && parsed.pv?.length) {
+                  linesByPv.set(parsed.multipv || 1, {
+                    multipv: parsed.multipv || 1,
+                    score: parsed.score,
+                    pv: parsed.pv,
+                    depth: parsed.depth,
+                    nodes: parsed.nodes,
+                  });
+                }
+                for (const listener of this._listeners) listener(parsed);
               }
-              for (const listener of this._listeners) listener(parsed);
-            }
-            if (line.startsWith("bestmove ")) {
-              bestMove = line.split(/\s+/)[1] || "";
-              if (bestMove === "(none)") bestMove = "";
-              return true;
-            }
-            return false;
-          });
+              if (line.startsWith("bestmove ")) {
+                // A late bestmove from a previous stop can arrive after the next
+                // `go` is already pending. Ignore it until this search produces
+                // info (or an explicit no-move reply).
+                const move = line.split(/\s+/)[1] || "";
+                if (!sawSearchInfo && move !== "(none)") return false;
+                bestMove = move === "(none)" ? "" : move;
+                return true;
+              }
+              return false;
+            });
+          } finally {
+            this._searching = false;
+          }
 
           const lines = [...linesByPv.values()].sort((a, b) => a.multipv - b.multipv);
           const top = lines[0] || { score: { cp: 0 }, pv: bestMove ? [bestMove] : [], multipv: 1 };
@@ -146,22 +162,32 @@
         await this.init();
         return this._enqueue(async () => {
           let score = { cp: 0 };
+          let sawSearchInfo = false;
           if (this._multipv !== 1) {
             this._post("setoption name MultiPV value 1");
             this._multipv = 1;
           }
-          this._post("stop");
-          this._post("setoption name Clear Hash");
-          this._post(`position fen ${fen}`);
-          // UCI `searchmoves` consumes the remaining move tokens, so it must
-          // come after every other search limit (including `nodes`).
-          await this._sendAndWait(`go nodes ${safeNodes} searchmoves ${safeMove}`, (line) => {
-            if (line.startsWith("info ") && line.includes(" score ")) {
-              const parsed = parseInfoLine(line);
-              if (parsed.score) score = parsed.score;
-            }
-            return line.startsWith("bestmove ");
-          });
+          await this._syncPosition(fen);
+          this._searching = true;
+          try {
+            // UCI `searchmoves` consumes the remaining move tokens, so it must
+            // come after every other search limit (including `nodes`).
+            await this._sendAndWait(`go nodes ${safeNodes} searchmoves ${safeMove}`, (line) => {
+              if (line.startsWith("info ") && line.includes(" score ")) {
+                sawSearchInfo = true;
+                const parsed = parseInfoLine(line);
+                if (parsed.score) score = parsed.score;
+              }
+              if (line.startsWith("bestmove ")) {
+                const move = line.split(/\s+/)[1] || "";
+                if (!sawSearchInfo && move !== "(none)") return false;
+                return true;
+              }
+              return false;
+            });
+          } finally {
+            this._searching = false;
+          }
           return score;
         });
       });
@@ -170,6 +196,7 @@
     async stop() {
       if (!this.worker) return;
       this._post("stop");
+      this._searching = false;
       if (this._pending) {
         const pending = this._pending;
         this._pending = null;
@@ -186,6 +213,7 @@
       this.ready = false;
       this._initPromise = null;
       this._multipv = 1;
+      this._searching = false;
       if (this._pending) {
         const pending = this._pending;
         this._pending = null;
@@ -195,6 +223,19 @@
       this._listeners.clear();
     }
 
+    async _syncPosition(fen) {
+      // stop may produce a late bestmove; isready/go handlers ignore it until the
+      // current command's expected reply (readyok / info+bestmove) arrives.
+      this._post("stop");
+      this._searching = false;
+      this._post("setoption name Clear Hash");
+      // Stockfish may apply setoption asynchronously; wait before changing the
+      // board so `go` never searches a stale (often startpos) position.
+      await this._sendAndWait("isready", (line) => line === "readyok", 30000);
+      this._post(`position fen ${fen}`);
+      await this._sendAndWait("isready", (line) => line === "readyok", 30000);
+    }
+
     _post(command) {
       this.worker?.postMessage(command);
     }
@@ -202,7 +243,7 @@
     _onMessage(message) {
       // stockfish.js may batch several UCI records in one Worker message.
       for (const line of String(message).split(/\r?\n/).filter(Boolean)) {
-        if (!this._pending) return;
+        if (!this._pending) continue;
         let done = false;
         try {
           done = Boolean(this._pending.match(line));
@@ -256,6 +297,28 @@
     const number = Number(value);
     if (!Number.isFinite(number)) return min;
     return Math.max(min, Math.min(max, Math.round(number)));
+  }
+
+  function strengthPresetIds() {
+    return Object.keys(STRENGTH_PRESETS);
+  }
+
+  function nodesForStrength(strength) {
+    return STRENGTH_PRESETS[strength] || STRENGTH_PRESETS[DEFAULT_STRENGTH];
+  }
+
+  function strengthForNodes(nodes) {
+    const safeNodes = clamp(nodes, MIN_NODES, MAX_NODES);
+    let bestId = DEFAULT_STRENGTH;
+    let bestDistance = Infinity;
+    for (const [id, presetNodes] of Object.entries(STRENGTH_PRESETS)) {
+      const distance = Math.abs(presetNodes - safeNodes);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestId = id;
+      }
+    }
+    return bestId;
   }
 
   function runSharedSearch(key, search) {
@@ -316,6 +379,8 @@
   global.StockfishEngine = StockfishEngine;
   global.STOCKFISH_DEFAULT_NODES = DEFAULT_NODES;
   global.STOCKFISH_DEFAULT_LINES = DEFAULT_LINES;
+  global.STOCKFISH_DEFAULT_STRENGTH = DEFAULT_STRENGTH;
+  global.STOCKFISH_STRENGTH_PRESETS = STRENGTH_PRESETS;
   global.STOCKFISH_MIN_NODES = MIN_NODES;
   global.STOCKFISH_MAX_NODES = MAX_NODES;
   global.STOCKFISH_MIN_LINES = MIN_LINES;
@@ -323,4 +388,7 @@
   global.STOCKFISH_ENGINE_NAME = "Stockfish 18 Lite";
   global.STOCKFISH_ENGINE_VERSION = ENGINE_VERSION;
   global.clampEngineSetting = clamp;
+  global.stockfishStrengthPresetIds = strengthPresetIds;
+  global.stockfishNodesForStrength = nodesForStrength;
+  global.stockfishStrengthForNodes = strengthForNodes;
 })(window);
