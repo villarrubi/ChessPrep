@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 
 from api.app.main import app
@@ -91,7 +93,7 @@ def test_loader_cycles_all_pieces_without_disabling_its_timer():
     index = client.get("/").text
     script = client.get("/app.js").text
 
-    assert "/app.js?v=20260807-best-shift" in index
+    assert "/app.js?v=20260807-best-color" in index
     assert 'const LOADER_PIECES = ["♙", "♘", "♗", "♖", "♕", "♔"];' in script
     assert "const LOADER_INTERVAL_MS = 450;" in script
     assert "window.setInterval(advanceLoaderPiece, LOADER_INTERVAL_MS)" in script
@@ -107,7 +109,7 @@ def test_language_switcher_and_elo_calculator_are_available():
     assert 'id="language-button"' in index
     assert 'id="language-menu"' in index
     assert index.count('data-language="') == 5
-    assert "/i18n.js?v=20260807-best-shift" in index
+    assert "/i18n.js?v=20260807-best-color" in index
     assert 'const STORAGE_KEY = "chessprep_language";' in translations
     assert '{ code: "es"' in translations
     assert '{ code: "en"' in translations
@@ -221,7 +223,7 @@ def test_manual_moves_are_draggable_and_use_an_independent_engine():
     translations = client.get("/i18n.js").text
     styles = client.get("/styles.css").text
 
-    assert "/js/exploreMode.js?v=20260807-best-shift" in index
+    assert "/js/exploreMode.js?v=20260807-best-color" in index
     assert 'id="explore-toggle"' not in index
     assert "exploreEngine = new global.StockfishEngine()" in viewer_script
     assert "new global.ExploreMode(exploreEngine)" in viewer_script
@@ -252,7 +254,8 @@ def test_manual_moves_are_draggable_and_use_an_independent_engine():
     assert "--judgment-best:" in styles
     assert "--judgment-excellent:" in styles
     assert "--judgment-good:" in styles
-    assert "manual-try.best" in styles
+    assert "bestJudgmentShift" in styles
+    assert ".judgment.best" in styles
     assert '.board-square.drag-over' in styles
     assert '.board-piece[draggable="true"]' in styles
     assert '.board-square[draggable="true"]' not in styles
@@ -656,3 +659,71 @@ def test_combined_profiles_merge_sources(monkeypatch):
         "2026-07-02",
         "2026-07-01",
     ]
+
+
+def test_combined_profiles_stream_reports_platform_progress(monkeypatch):
+    import api.app.main as main_module
+
+    pgn_lichess = """[Event "Online"]
+[Date "2026.07.01"]
+[White "DualUser"]
+[Black "One"]
+[Result "1-0"]
+1. e4 e5 2. Nf3 Nc6 1-0
+"""
+    pgn_chesscom = """[Event "Online"]
+[Date "2026.07.02"]
+[White "Two"]
+[Black "OtherAlias"]
+[Result "0-1"]
+1. d4 d5 2. c4 e6 0-1
+"""
+    lichess_player = PlayerRef(
+        source="lichess", external_id="dualuser", username="DualUser",
+        display_name="Dual User", game_type=GameType.ONLINE,
+    )
+    chesscom_player = PlayerRef(
+        source="chess.com", external_id="otheralias", username="OtherAlias",
+        display_name="Dual User", game_type=GameType.ONLINE,
+    )
+    monkeypatch.setattr(main_module, "get_lichess_player", lambda _: lichess_player)
+    monkeypatch.setattr(main_module, "get_chesscom_player", lambda _: chesscom_player)
+    monkeypatch.setattr(
+        main_module, "fetch_lichess_games",
+        lambda *_, **__: parse_pgn(pgn_lichess, source="lichess", game_type=GameType.ONLINE, target_player="DualUser", confidence="official"),
+    )
+    monkeypatch.setattr(
+        main_module, "fetch_chesscom_games",
+        lambda *_, **__: parse_pgn(pgn_chesscom, source="chess.com", game_type=GameType.ONLINE, target_player="OtherAlias", confidence="official"),
+    )
+
+    with client.stream(
+        "POST",
+        "/api/v1/players/combined?max_games=50&stream=true",
+        json={"lichess_username": "DualUser", "chesscom_username": "OtherAlias"},
+    ) as response:
+        assert response.status_code == 200
+        assert "ndjson" in response.headers["content-type"]
+        events = [
+            json.loads(line)
+            for line in response.iter_lines()
+            if line.strip()
+        ]
+
+    assert events[0]["type"] == "start"
+    assert events[0]["platforms"] == ["lichess", "chess.com"]
+    assert any(
+        event["type"] == "platform"
+        and event["source"] == "lichess"
+        and event["status"] == "ready"
+        for event in events
+    )
+    assert any(
+        event["type"] == "platform"
+        and event["source"] == "chess.com"
+        and event["status"] == "ready"
+        for event in events
+    )
+    assert events[-1]["type"] == "done"
+    assert events[-1]["dataset"]["player"]["source"] == "combined"
+    assert len(events[-1]["dataset"]["games"]) == 2

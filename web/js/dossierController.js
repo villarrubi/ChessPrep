@@ -5,6 +5,7 @@
   // to this module so the rest of the SPA cannot couple to its DOM details.
   let state;
   let api;
+  let apiNdjson;
   let setLoading;
   let toast;
   let openDialog;
@@ -31,6 +32,7 @@
     constructor(dependencies) {
       state = dependencies.state;
       api = dependencies.api;
+      apiNdjson = dependencies.apiNdjson;
       setLoading = dependencies.setLoading;
       toast = dependencies.toast;
       openDialog = dependencies.openDialog;
@@ -191,14 +193,10 @@
     try {
       let player;
       if (selectedSource === "all") {
-        setLoading(true, t("loading.combiningPlatforms"));
-        const combined = await api("/players/combined?max_games=50", {
-          method: "POST",
-          body: JSON.stringify({
-            lichess_username: query,
-            chesscom_username: query
-          }),
-        });
+        const combined = await combineProfilesStream({
+          lichess_username: query,
+          chesscom_username: query,
+        }, t("loading.combiningPlatforms"));
         player = combined.dataset.player;
         if (combined.warnings.length) {
           toast(
@@ -472,15 +470,11 @@
       return;
     }
     closeDialog("combine-dialog");
-    setLoading(true, t("loading.combiningProfiles"));
     try {
-      const result = await api("/players/combined?max_games=50", {
-        method: "POST",
-        body: JSON.stringify({
-          lichess_username: lichess || null,
-          chesscom_username: chesscom || null
-        }),
-      });
+      const result = await combineProfilesStream({
+        lichess_username: lichess || null,
+        chesscom_username: chesscom || null,
+      }, t("loading.combiningProfiles"));
       state.pace = "global";
       $$("[data-pace]").forEach((button) => button.classList.toggle("active", button.dataset.pace === "global"));
       await loadPlayer(result.dataset.player, {
@@ -503,6 +497,238 @@
     } catch (error) {
       setLoading(false);
       toast(t("toast.combineError"), error.message, "error");
+    }
+  }
+
+  function createCombineSteps(platforms) {
+    const steps = (platforms || []).map((source) => ({
+      id: source,
+      status: "pending",
+      label: t("loading.platformPending", {
+        source: sourceLabel(source)
+      }),
+    }));
+    steps.push({
+      id: "merge",
+      status: "pending",
+      label: t("loading.mergePending"),
+    });
+    return steps;
+  }
+
+  function cloneCombineSteps(steps) {
+    return (steps || []).map((step) => ({
+      ...step
+    }));
+  }
+
+  function paintCombineProgress(title, steps, progress = null) {
+    setLoading(true, title, cloneCombineSteps(steps), progress);
+  }
+
+  function gamesBySource(dataset) {
+    const counts = {};
+    for (const game of dataset?.games || []) {
+      const source = game?.source;
+      if (!source) continue;
+      counts[source] = (counts[source] || 0) + 1;
+    }
+    return counts;
+  }
+
+  function finalizeCombineSteps(steps, event) {
+    const counts = gamesBySource(event?.dataset);
+    const total = Array.isArray(event?.dataset?.games) ? event.dataset.games.length : 0;
+    return (steps || []).map((step) => {
+      if (step.id === "merge") {
+        return {
+          ...step,
+          status: "ready",
+          label: t("loading.mergeReady", {
+            count: total,
+          }),
+        };
+      }
+      if (step.status === "error") return {
+        ...step
+      };
+      return {
+        ...step,
+        status: "ready",
+        label: t("loading.platformReady", {
+          source: sourceLabel(step.id),
+          count: counts[step.id] ?? "…",
+        }),
+      };
+    });
+  }
+
+  function applyCombineEvent(steps, event) {
+    if (!event || !steps?.length) return steps;
+    if (event.type === "done") {
+      return finalizeCombineSteps(steps, event);
+    }
+    if (event.type === "start" && Array.isArray(event.platforms)) {
+      return createCombineSteps(event.platforms);
+    }
+    if (event.type === "platform") {
+      const step = steps.find((item) => item.id === event.source);
+      if (!step) return steps;
+      if (event.status === "loading") {
+        step.status = "loading";
+        step.label = t("loading.platformLoading", {
+          source: sourceLabel(event.source)
+        });
+      } else if (event.status === "ready") {
+        step.status = "ready";
+        step.label = t("loading.platformReady", {
+          source: sourceLabel(event.source),
+          count: event.games ?? 0,
+        });
+      } else if (event.status === "error") {
+        step.status = "error";
+        step.label = t("loading.platformError", {
+          source: sourceLabel(event.source)
+        });
+      }
+      return steps;
+    }
+    if (event.type === "merge") {
+      const step = steps.find((item) => item.id === "merge");
+      if (!step) return steps;
+      if (event.status === "loading") {
+        step.status = "loading";
+        step.label = t("loading.mergeLoading");
+      } else if (event.status === "ready") {
+        step.status = "ready";
+        step.label = t("loading.mergeReady", {
+          count: event.games ?? 0
+        });
+      }
+    }
+    return steps;
+  }
+
+  function startStagedCombineProgress(steps, title, shouldPause) {
+    const platformIds = steps.filter((step) => step.id !== "merge").map((step) => step.id);
+    const timers = [];
+    let bar = 8;
+    let stopped = false;
+
+    const paint = (progress) => {
+      if (stopped || shouldPause()) return;
+      paintCombineProgress(title, steps, progress ?? bar);
+    };
+
+    const markPlatformLoading = (source) => {
+      const step = steps.find((item) => item.id === source);
+      if (!step || step.status === "ready" || step.status === "error") return;
+      step.status = "loading";
+      step.label = t("loading.platformLoading", {
+        source: sourceLabel(source)
+      });
+    };
+
+    const markPlatformReady = (source) => {
+      const step = steps.find((item) => item.id === source);
+      if (!step || step.status === "ready" || step.status === "error") return;
+      step.status = "ready";
+      step.label = t("loading.platformReady", {
+        source: sourceLabel(source),
+        count: "…",
+      });
+    };
+
+    if (platformIds[0]) {
+      markPlatformLoading(platformIds[0]);
+      paint(10);
+    }
+
+    // Spend almost all staged time on platform fetches. Merge is only a short
+    // final beat when the response arrives (see combineProfilesStream).
+    platformIds.forEach((source, index) => {
+      const isLast = index === platformIds.length - 1;
+      if (isLast) return;
+      const at = 1400 + index * 1800;
+      timers.push(window.setTimeout(() => {
+        if (stopped || shouldPause()) return;
+        markPlatformReady(source);
+        const next = platformIds[index + 1];
+        if (next) markPlatformLoading(next);
+        bar = Math.min(72, 24 + (index + 1) * 30);
+        paint(bar);
+      }, at));
+    });
+
+    const creep = window.setInterval(() => {
+      if (stopped || shouldPause()) return;
+      bar = Math.min(86, bar + 1.5);
+      paint(bar);
+    }, 500);
+    timers.push(creep);
+
+    return {
+      stop() {
+        stopped = true;
+        timers.forEach((id) => {
+          window.clearTimeout(id);
+          window.clearInterval(id);
+        });
+      },
+    };
+  }
+
+  function markMergeLoading(steps) {
+    const merge = steps.find((item) => item.id === "merge");
+    if (!merge || merge.status === "ready" || merge.status === "error") return steps;
+    merge.status = "loading";
+    merge.label = t("loading.mergeLoading");
+    for (const step of steps) {
+      if (step.id === "merge" || step.status === "ready" || step.status === "error") continue;
+      step.status = "ready";
+      step.label = t("loading.platformReady", {
+        source: sourceLabel(step.id),
+        count: "…",
+      });
+    }
+    return steps;
+  }
+
+  async function combineProfilesStream(payload, title) {
+    let steps = createCombineSteps([
+      ...(payload.lichess_username ? ["lichess"] : []),
+      ...(payload.chesscom_username ? ["chess.com"] : []),
+    ]);
+    let liveProgress = false;
+    const staged = startStagedCombineProgress(steps, title, () => liveProgress);
+    paintCombineProgress(title, steps, 10);
+    try {
+      return await apiNdjson("/players/combined?max_games=50&stream=true", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }, (event) => {
+        const isProgressEvent = event?.type && event.type !== "done" && event.type !== "error";
+        if (isProgressEvent) {
+          liveProgress = true;
+        }
+        if (isProgressEvent || event?.type === "done" || event?.type === "error") {
+          staged.stop();
+        }
+        // Keep merge as a brief final beat: ignore early merge events from the
+        // stream and only show it right before the finished dossier.
+        if (event?.type === "merge") return;
+        if (event?.type === "done") {
+          steps = markMergeLoading(cloneCombineSteps(steps));
+          paintCombineProgress(title, steps, 94);
+        }
+        steps = applyCombineEvent(steps, event).map((step) => ({
+          ...step
+        }));
+        const progress = event?.type === "done" ? 100 : null;
+        paintCombineProgress(title, steps, progress);
+      });
+    } finally {
+      staged.stop();
     }
   }
 

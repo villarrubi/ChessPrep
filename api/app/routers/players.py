@@ -1,7 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+import json
+import queue
+import threading
+from collections.abc import Iterator
 
+from fastapi import APIRouter, Query
+from fastapi.responses import StreamingResponse
+
+from api.app.errors import ApplicationError
 from api.app.models import CombinedPlayerCreate, Mode, Pace
 from api.app.services.container import ApplicationServices
 
@@ -20,16 +27,81 @@ def create_players_router(services: ApplicationServices) -> APIRouter:
     def combine_players(
         payload: CombinedPlayerCreate,
         max_games: int = Query(50, ge=1, le=100),
+        stream: bool = Query(False, description="Emit NDJSON progress events while combining"),
     ):
-        dataset, warnings, duplicates = services.online_players.combine(
-            payload,
-            max_games,
+        if not stream:
+            dataset, warnings, duplicates = services.online_players.combine(
+                payload,
+                max_games,
+            )
+            return {
+                "dataset": services.datasets.dataset_summary(dataset),
+                "warnings": warnings,
+                "duplicates": duplicates,
+            }
+
+        def event_stream() -> Iterator[str]:
+            events: queue.Queue[tuple[str, object]] = queue.Queue()
+
+            def on_progress(event: dict) -> None:
+                events.put(("progress", event))
+
+            def worker() -> None:
+                try:
+                    dataset, warnings, duplicates = services.online_players.combine(
+                        payload,
+                        max_games,
+                        on_progress=on_progress,
+                    )
+                    events.put(
+                        (
+                            "done",
+                            {
+                                "type": "done",
+                                "dataset": services.datasets.dataset_summary(dataset),
+                                "warnings": warnings,
+                                "duplicates": duplicates,
+                            },
+                        )
+                    )
+                except ApplicationError as exc:
+                    events.put(
+                        (
+                            "error",
+                            {
+                                "type": "error",
+                                "detail": exc.detail,
+                                "status_code": exc.status_code,
+                            },
+                        )
+                    )
+                except Exception as exc:  # pragma: no cover - defensive stream guard
+                    events.put(
+                        (
+                            "error",
+                            {
+                                "type": "error",
+                                "detail": str(exc) or "No se pudieron combinar los perfiles.",
+                                "status_code": 500,
+                            },
+                        )
+                    )
+
+            threading.Thread(target=worker, daemon=True).start()
+            while True:
+                kind, payload_event = events.get()
+                yield json.dumps(payload_event, ensure_ascii=False) + "\n"
+                if kind in {"done", "error"}:
+                    break
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="application/x-ndjson",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Accel-Buffering": "no",
+            },
         )
-        return {
-            "dataset": services.datasets.dataset_summary(dataset),
-            "warnings": warnings,
-            "duplicates": duplicates,
-        }
 
     @router.get("/players/{source}/{external_id}")
     def player_detail(source: str, external_id: str):

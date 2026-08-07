@@ -173,6 +173,95 @@ async function api(path, options = {}) {
   return payload;
 }
 
+function asCombineDonePayload(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  if (payload.type === "done" && payload.dataset) return payload;
+  // Non-streaming backends return the final body without NDJSON wrappers.
+  if (payload.dataset) {
+    return {
+      type: "done",
+      dataset: payload.dataset,
+      warnings: payload.warnings || [],
+      duplicates: payload.duplicates || 0,
+    };
+  }
+  return null;
+}
+
+async function apiNdjson(path, options = {}, onEvent = () => {}) {
+  const response = await fetch(`${API}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/x-ndjson, application/json",
+      ...(options.headers || {})
+    },
+    ...options,
+  });
+  if (!response.ok) {
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    throw new Error(payload?.detail || payload?.message || `Error ${response.status}`);
+  }
+  if (!response.body) {
+    throw new Error(t("toast.combineError"));
+  }
+
+  const contentType = (response.headers.get("content-type") || "").toLowerCase();
+  if (contentType.includes("application/json") && !contentType.includes("ndjson")) {
+    const payload = await response.json();
+    const done = asCombineDonePayload(payload);
+    if (!done) throw new Error(payload?.detail || t("toast.combineError"));
+    onEvent(done);
+    return done;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalPayload = null;
+
+  const consumeEvent = (event) => {
+    if (!event || typeof event !== "object") return;
+    onEvent(event);
+    if (event.type === "error") {
+      throw new Error(event.detail || t("toast.combineError"));
+    }
+    const done = asCombineDonePayload(event);
+    if (done) finalPayload = done;
+  };
+
+  while (true) {
+    const {
+      done,
+      value
+    } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, {
+      stream: true
+    });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      consumeEvent(JSON.parse(trimmed));
+    }
+  }
+
+  if (buffer.trim()) {
+    consumeEvent(JSON.parse(buffer.trim()));
+  }
+
+  if (!finalPayload) {
+    throw new Error(t("toast.combineError"));
+  }
+  return finalPayload;
+}
+
 function advanceLoaderPiece() {
   const piece = $("#loader-piece");
   if (!piece) return;
@@ -196,11 +285,56 @@ function stopLoaderPieces() {
   loaderTimer = null;
 }
 
-function setLoading(visible, text = t("loading.default")) {
+function progressFromSteps(steps) {
+  if (!steps?.length) return 0;
+  let score = 0;
+  for (const step of steps) {
+    if (step.status === "ready" || step.status === "error") score += 1;
+    else if (step.status === "loading") score += 0.42;
+  }
+  return Math.min(96, Math.round((score / steps.length) * 100));
+}
+
+function setLoading(visible, text = t("loading.default"), steps = null, progress = null) {
   $("#loading-text").textContent = text;
+  renderLoadingSteps(steps);
+  renderLoadingProgress(visible ? (progress ?? (steps?.length ? progressFromSteps(steps) : null)) : null);
   $("#loading-layer").hidden = !visible;
   if (visible) startLoaderPieces();
-  else stopLoaderPieces();
+  else {
+    stopLoaderPieces();
+    renderLoadingSteps(null);
+    renderLoadingProgress(null);
+  }
+}
+
+function renderLoadingProgress(progress) {
+  const wrap = $("#loading-progress");
+  const bar = $("#loading-progress-bar");
+  if (!wrap || !bar) return;
+  if (progress == null || Number.isNaN(progress)) {
+    wrap.hidden = true;
+    bar.style.width = "0%";
+    return;
+  }
+  wrap.hidden = false;
+  bar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+}
+
+function renderLoadingSteps(steps) {
+  const list = $("#loading-steps");
+  if (!list) return;
+  if (!steps?.length) {
+    list.hidden = true;
+    list.innerHTML = "";
+    return;
+  }
+  list.hidden = false;
+  list.innerHTML = steps.map((step) => {
+    const status = step.status || "pending";
+    const mark = status === "ready" ? "✓" : status === "error" ? "!" : status === "loading" ? "" : "·";
+    return `<li data-status="${escapeHtml(status)}"><span class="step-mark" aria-hidden="true">${mark}</span><span>${escapeHtml(step.label || "")}</span></li>`;
+  }).join("");
 }
 
 function toast(title, message = "", type = "success", {
@@ -328,6 +462,7 @@ function init() {
   dossierController = new DossierController({
     state,
     api,
+    apiNdjson,
     setLoading,
     toast,
     openDialog,

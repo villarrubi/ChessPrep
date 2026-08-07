@@ -1,4 +1,4 @@
-const CACHE_NAME = "chessprep-v20260807-combined-fast";
+const CACHE_NAME = "chessprep-v20260807-progress-ui";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
@@ -15,6 +15,7 @@ const STATIC_ASSETS = [
   "/js/moveQuality.js",
   "/js/otbController.js",
   "/js/pgnImportController.js",
+  "/js/registerServiceWorker.js",
   "/js/stockfishEngine.js"
 ];
 
@@ -43,67 +44,73 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+function canCacheRequest(request) {
+  // Cache.put only supports GET; never persist mutating/streamed API calls.
+  return request.method === "GET";
+}
+
+function canCacheResponse(response) {
+  return Boolean(response) && response.ok && response.status === 200 && response.type === "basic";
+}
+
+function putInCache(request, response) {
+  if (!canCacheRequest(request) || !canCacheResponse(response)) return;
+  const responseClone = response.clone();
+  caches.open(CACHE_NAME).then((cache) => {
+    cache.put(request, responseClone);
+  }).catch(() => {
+    // Ignore cache write failures (quota, opaque responses, etc.)
+  });
+}
+
+function offlineApiResponse() {
+  return new Response(
+    JSON.stringify({
+      error: "offline",
+      message: "No hay conexión. Los datos pueden estar desactualizados.",
+    }),
+    {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+}
+
 // Interceptar peticiones: estrategia cache-first para estáticos, network-first para API
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-  
-  // Peticiones a la API: network-first con fallback a offline
+
+  // Peticiones a la API: network-first; only GET responses may be cached.
   if (url.pathname.startsWith("/api/")) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          // Clonar respuesta para cachear
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
+          putInCache(event.request, response);
           return response;
         })
         .catch(() => {
-          // Fallback: intentar servir desde caché si existe
+          if (!canCacheRequest(event.request)) {
+            return offlineApiResponse();
+          }
           return caches.match(event.request).then((cachedResponse) => {
-            if (cachedResponse) return cachedResponse;
-            
-            // Si no hay caché, devolver respuesta offline
-            return new Response(
-              JSON.stringify({ 
-                error: "offline", 
-                message: "No hay conexión. Los datos pueden estar desactualizados." 
-              }),
-              { 
-                status: 503, 
-                headers: { "Content-Type": "application/json" } 
-              }
-            );
+            return cachedResponse || offlineApiResponse();
           });
         })
     );
     return;
   }
-  
+
   // Assets estáticos y HTML: cache-first
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
         return cachedResponse;
       }
-      
-      // Si no está en caché, intentar red
+
       return fetch(event.request).then((response) => {
-        // No cachear respuestas que no sean exitosas
-        if (!response || response.status !== 200 || response.type !== "basic") {
-          return response;
-        }
-        
-        // Clonar respuesta para cachear
-        const responseClone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseClone);
-        });
-        
+        putInCache(event.request, response);
         return response;
       }).catch(() => {
-        // Fallback para navegación: servir index.html offline
         if (event.request.mode === "navigate") {
           return caches.match("/index.html");
         }

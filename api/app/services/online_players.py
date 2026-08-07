@@ -4,6 +4,7 @@ import hashlib
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from typing import Any
 
 from api.app.errors import (
     BadRequestError,
@@ -20,6 +21,8 @@ from api.app.models import (
 from api.app.services.demo import DemoDatasetService
 from api.app.services.pgn import ParseResult
 from api.app.services.store import DatasetStore
+
+ProgressCallback = Callable[[dict[str, Any]], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,6 +151,7 @@ class OnlinePlayerService:
         self,
         payload: CombinedPlayerCreate,
         max_games: int,
+        on_progress: ProgressCallback | None = None,
     ) -> tuple[TemporaryDataset, list[str], int]:
         handles = {
             "lichess": payload.lichess_username,
@@ -168,6 +172,10 @@ class OnlinePlayerService:
         games = []
         warnings: list[str] = []
 
+        def emit(event: dict[str, Any]) -> None:
+            if on_progress:
+                on_progress(event)
+
         def _load_source(source: str, handle: str) -> tuple[str, PlayerRef | None, ParseResult | None, str | None]:
             provider = self._providers[source]
             try:
@@ -176,6 +184,10 @@ class OnlinePlayerService:
                 return source, player, parsed, None
             except (LookupError, provider.unavailable_error) as exc:
                 return source, None, None, f"{provider.label}: {exc}"
+
+        emit({"type": "start", "platforms": [source for source, _ in jobs]})
+        for source, _handle in jobs:
+            emit({"type": "platform", "source": source, "status": "loading"})
 
         # Provider HTTP calls dominate wall time; overlap Lichess and Chess.com.
         with ThreadPoolExecutor(max_workers=max(1, len(jobs))) as pool:
@@ -186,6 +198,21 @@ class OnlinePlayerService:
             for future in as_completed(futures):
                 source, player, parsed, warning = future.result()
                 results_by_source[source] = (player, parsed, warning)
+                if warning:
+                    emit({
+                        "type": "platform",
+                        "source": source,
+                        "status": "error",
+                        "message": warning,
+                    })
+                else:
+                    assert parsed is not None
+                    emit({
+                        "type": "platform",
+                        "source": source,
+                        "status": "ready",
+                        "games": len(parsed.games),
+                    })
 
         # Keep the historical lichess-then-chess.com merge order.
         for source, _handle in jobs:
@@ -202,6 +229,7 @@ class OnlinePlayerService:
             detail = " ".join(warnings) or "Ninguna plataforma devolvió partidas públicas."
             raise ValidationError(detail)
 
+        emit({"type": "merge", "status": "loading"})
         unique_games = {}
         for game in games:
             unique_games.setdefault(game.dedupe_hash, game)
@@ -243,6 +271,7 @@ class OnlinePlayerService:
             warnings.append(
                 "El dossier se creó con las plataformas que sí estaban disponibles."
             )
+        emit({"type": "merge", "status": "ready", "games": len(dataset.games)})
         return dataset, warnings, duplicates
 
     def _selected_providers(self, source: str) -> tuple[OnlineProvider, ...]:
