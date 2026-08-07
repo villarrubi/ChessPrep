@@ -565,7 +565,7 @@
         `<span class="manual-try-detail">${escapeHtml(entry.error || t("analysis.evaluateError"))}</span>` +
         `</div>`;
     }
-    return `<div class="manual-try ${escapeHtml(entry.judgment || "")}">` +
+    return `<div class="manual-try">` +
       `<span class="manual-try-ply">${plyLabel}</span>` +
       `<span class="manual-try-san">${escapeHtml(entry.san)}${entry.glyph ? ` <span class="judgment ${escapeHtml(entry.judgment)}">${escapeHtml(entry.glyph)}</span>` : ""}</span>` +
       `<span class="manual-try-detail">` +
@@ -584,10 +584,8 @@
     if (entry.status === "error") {
       return `<strong>${escapeHtml(entry.san)}</strong> ${escapeHtml(t("analysis.evaluateError"))}`;
     }
-    const glyph = entry.glyph
-      ? ` <span class="judgment ${escapeHtml(entry.judgment)}">${escapeHtml(entry.glyph)}</span>`
-      : "";
-    return `<strong>${escapeHtml(entry.san)}</strong>${glyph} <span class="judgment ${escapeHtml(entry.judgment)}">${escapeHtml(t(`quality.${entry.judgment}`))}</span>`;
+    const mark = [entry.glyph, t(`quality.${entry.judgment}`)].filter(Boolean).join(" ");
+    return `<strong>${escapeHtml(entry.san)}</strong> <span class="judgment ${escapeHtml(entry.judgment)}">${escapeHtml(mark)}</span>`;
   }
 
   function renderAnalysisSummary() {
@@ -722,12 +720,20 @@
     if (explore.canUndo()) {
       const tries = explore.tries || [];
       if (!tries.length) {
-        el.innerHTML = `<div class="analysis-line-empty">${escapeHtml(t("analysis.manualHint"))}</div>`;
+        const empty = `<div class="analysis-line-empty">${escapeHtml(t("analysis.manualHint"))}</div>`;
+        if (el.dataset.rendered !== empty) {
+          el.innerHTML = empty;
+          el.dataset.rendered = empty;
+        }
         return;
       }
-      el.innerHTML = tries.map((entry, index) => formatManualTryLine(entry, index)).join("");
+      const html = tries.map((entry, index) => formatManualTryLine(entry, index)).join("");
+      if (el.dataset.rendered === html) return;
+      el.innerHTML = html;
+      el.dataset.rendered = html;
       return;
     }
+    el.dataset.rendered = "";
     if (!state.liveLines.length) {
       el.innerHTML =
         `<div class="analysis-line-empty">${escapeHtml(t("dynamic.calculatingLines", { count: state.engineLines, lines: t(state.engineLines === 1 ? "dynamic.line" : "dynamic.lines"), strength: strengthLabel() }))}</div>`;
@@ -1009,15 +1015,26 @@
     bar.hidden = !explore.canUndo();
     undo.disabled = !explore.canUndo();
     if (!explore.canUndo()) {
-      feedback.textContent = "";
+      if (feedback.dataset.rendered !== "") {
+        feedback.textContent = "";
+        feedback.dataset.rendered = "";
+      }
       return;
     }
     const tries = explore.tries || [];
     if (!tries.length) {
-      feedback.textContent = t("dynamic.clickPiece");
+      const empty = t("dynamic.clickPiece");
+      if (feedback.dataset.rendered !== empty) {
+        feedback.textContent = empty;
+        feedback.dataset.rendered = empty;
+      }
       return;
     }
-    feedback.innerHTML = tries.map((entry) => formatManualTryCompact(entry)).join(" · ");
+    const html = tries.map((entry) => formatManualTryCompact(entry)).join(" · ");
+    // Avoid rewriting identical markup: it restarts CSS color animations and looks jumpy.
+    if (feedback.dataset.rendered === html) return;
+    feedback.innerHTML = html;
+    feedback.dataset.rendered = html;
   }
 
   function renderInteractiveBoardState() {
