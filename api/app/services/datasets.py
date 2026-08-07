@@ -12,7 +12,7 @@ from api.app.models import (
     PlayerRef,
     TemporaryDataset,
 )
-from api.app.services.pgn import parse_pgn
+from api.app.services.pgn import game_list_item, hydrate_game_for_viewer, parse_pgn
 from api.app.services.stats import calculate_stats, filter_games
 from api.app.services.store import DatasetStore
 
@@ -65,7 +65,7 @@ class DatasetService:
         )
         dataset = self._store.create(player, parsed.games)
         return {
-            "dataset": dataset,
+            "dataset": self.dataset_summary(dataset),
             "fide_player": None,
             "warnings": parsed.errors,
             "duplicates": parsed.duplicates,
@@ -82,7 +82,7 @@ class DatasetService:
         dataset = self._require_dataset(dataset_id)
         games = self.filter(dataset, mode=mode, pace=pace)
         return {
-            "items": games,
+            "items": self.games_summary(games),
             "total": len(games),
             "trace": self.trace(dataset, games, mode, pace),
         }
@@ -95,7 +95,17 @@ class DatasetService:
         game = self._store.find_game(source, game_id)
         if not game:
             raise NotFoundError("Partida no encontrada o conjunto caducado.")
-        return game
+        return hydrate_game_for_viewer(game)
+
+    @staticmethod
+    def dataset_summary(dataset: TemporaryDataset) -> dict[str, object]:
+        payload = dataset.model_dump(mode="json")
+        payload["games"] = [game_list_item(game) for game in dataset.games]
+        return payload
+
+    @staticmethod
+    def games_summary(games: list[NormalizedGame]) -> list[dict[str, object]]:
+        return [game_list_item(game) for game in games]
 
     @staticmethod
     def filter(

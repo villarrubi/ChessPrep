@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
@@ -66,17 +67,22 @@ def _get_json(url_or_path: str, timeout: int = 10) -> dict:
 def get_player(username: str) -> PlayerRef:
     clean_username = clean_untrusted_text(username, max_length=80)
     encoded_username = quote(clean_username.lower(), safe="")
-    payload = _get_json(f"/pub/player/{encoded_username}")
-    rating = None
-    try:
-        stats = _get_json(f"/pub/player/{encoded_username}/stats")
-        ratings = [
-            stats.get(key, {}).get("last", {}).get("rating")
-            for key in ("chess_rapid", "chess_blitz", "chess_bullet", "chess_daily")
-        ]
-        rating = max(value for value in ratings if isinstance(value, int))
-    except (LookupError, ProviderUnavailable, ValueError):
-        pass
+    profile_path = f"/pub/player/{encoded_username}"
+    stats_path = f"/pub/player/{encoded_username}/stats"
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        profile_future = pool.submit(_get_json, profile_path)
+        stats_future = pool.submit(_get_json, stats_path)
+        payload = profile_future.result()
+        rating = None
+        try:
+            stats = stats_future.result()
+            ratings = [
+                stats.get(key, {}).get("last", {}).get("rating")
+                for key in ("chess_rapid", "chess_blitz", "chess_bullet", "chess_daily")
+            ]
+            rating = max(value for value in ratings if isinstance(value, int))
+        except (LookupError, ProviderUnavailable, ValueError):
+            pass
     provider_username = clean_untrusted_text(payload.get("username") or clean_username, max_length=80)
     country_url = clean_untrusted_text(payload.get("country"), max_length=300)
     external_id = clean_identifier(provider_username, max_length=80)
@@ -110,7 +116,7 @@ def _pgn_with_external_id(game: dict) -> str | None:
 
 
 def fetch_games(username: str, max_games: int | None = None) -> ParseResult:
-    configured_max = int(os.getenv("CHESSPREP_CHESSCOM_MAX_GAMES", "100"))
+    configured_max = int(os.getenv("CHESSPREP_CHESSCOM_MAX_GAMES", "50"))
     limit = min(max(max_games or configured_max, 1), 100)
     encoded_username = quote(clean_untrusted_text(username, max_length=80).lower(), safe="")
     archive_index = _get_json(f"/pub/player/{encoded_username}/games/archives")

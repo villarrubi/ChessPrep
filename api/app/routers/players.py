@@ -19,14 +19,14 @@ def create_players_router(services: ApplicationServices) -> APIRouter:
     @router.post("/players/combined")
     def combine_players(
         payload: CombinedPlayerCreate,
-        max_games: int = Query(100, ge=1, le=100),
+        max_games: int = Query(50, ge=1, le=100),
     ):
         dataset, warnings, duplicates = services.online_players.combine(
             payload,
             max_games,
         )
         return {
-            "dataset": dataset,
+            "dataset": services.datasets.dataset_summary(dataset),
             "warnings": warnings,
             "duplicates": duplicates,
         }
@@ -39,9 +39,13 @@ def create_players_router(services: ApplicationServices) -> APIRouter:
     def refresh_games(
         source: str,
         external_id: str,
-        max_games: int = Query(100, ge=1, le=100),
+        max_games: int = Query(50, ge=1, le=100),
     ):
-        return services.online_players.refresh(source, external_id, max_games)
+        result = services.online_players.refresh(source, external_id, max_games)
+        return {
+            **result,
+            "dataset": services.datasets.dataset_summary(result["dataset"]),
+        }
 
     @router.get("/players/{source}/{external_id}/games")
     def player_games(
@@ -69,8 +73,9 @@ def create_players_router(services: ApplicationServices) -> APIRouter:
             date_to=date_to,
         )
         start = (page - 1) * page_size
+        page_items = games[start : start + page_size]
         return {
-            "items": games[start : start + page_size],
+            "items": services.datasets.games_summary(page_items),
             "total": len(games),
             "page": page,
             "page_size": page_size,

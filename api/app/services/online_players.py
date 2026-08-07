@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
 from api.app.errors import (
@@ -157,23 +158,45 @@ class OnlinePlayerService:
                 "Indica al menos un usuario de Lichess o Chess.com."
             )
 
+        jobs = [
+            (source, raw_handle.strip())
+            for source, raw_handle in handles.items()
+            if raw_handle and raw_handle.strip()
+        ]
+        requested = len(jobs)
         players: list[PlayerRef] = []
         games = []
         warnings: list[str] = []
-        requested = 0
-        for source, raw_handle in handles.items():
-            if not raw_handle or not raw_handle.strip():
-                continue
-            requested += 1
+
+        def _load_source(source: str, handle: str) -> tuple[str, PlayerRef | None, ParseResult | None, str | None]:
             provider = self._providers[source]
             try:
-                player = provider.get_player(raw_handle.strip())
+                player = provider.get_player(handle)
                 parsed = provider.fetch_games(player.username, max_games)
-                players.append(player)
-                games.extend(parsed.games)
-                warnings.extend(parsed.errors)
+                return source, player, parsed, None
             except (LookupError, provider.unavailable_error) as exc:
-                warnings.append(f"{provider.label}: {exc}")
+                return source, None, None, f"{provider.label}: {exc}"
+
+        # Provider HTTP calls dominate wall time; overlap Lichess and Chess.com.
+        with ThreadPoolExecutor(max_workers=max(1, len(jobs))) as pool:
+            futures = [pool.submit(_load_source, source, handle) for source, handle in jobs]
+            results_by_source: dict[
+                str, tuple[PlayerRef | None, ParseResult | None, str | None]
+            ] = {}
+            for future in as_completed(futures):
+                source, player, parsed, warning = future.result()
+                results_by_source[source] = (player, parsed, warning)
+
+        # Keep the historical lichess-then-chess.com merge order.
+        for source, _handle in jobs:
+            player, parsed, warning = results_by_source[source]
+            if warning:
+                warnings.append(warning)
+                continue
+            assert player is not None and parsed is not None
+            players.append(player)
+            games.extend(parsed.games)
+            warnings.extend(parsed.errors)
 
         if not games:
             detail = " ".join(warnings) or "Ninguna plataforma devolvió partidas públicas."

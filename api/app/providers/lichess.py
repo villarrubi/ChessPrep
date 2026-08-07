@@ -87,7 +87,7 @@ def get_player(username: str) -> PlayerRef:
 
 
 def fetch_games(username: str, max_games: int | None = None) -> ParseResult:
-    configured_max = int(os.getenv("CHESSPREP_LICHESS_MAX_GAMES", "100"))
+    configured_max = int(os.getenv("CHESSPREP_LICHESS_MAX_GAMES", "50"))
     limit = min(max(max_games or configured_max, 1), 100)
     standard_perfs = ",".join(STANDARD_PERF_TYPES)
     query = f"max={limit}&clocks=false&evals=false&opening=true&perfType={standard_perfs}"
@@ -97,10 +97,17 @@ def fetch_games(username: str, max_games: int | None = None) -> ParseResult:
         accept="application/x-chess-pgn",
         timeout=20,
     ).decode("utf-8", errors="replace")
-    return parse_pgn(
+    parsed = parse_pgn(
         body,
         source="lichess",
         game_type=GameType.ONLINE,
         target_player=username,
         confidence="official",
     )
+    if len(parsed.games) > limit:
+        return ParseResult(
+            games=parsed.games[:limit],
+            errors=parsed.errors,
+            duplicates=parsed.duplicates,
+        )
+    return parsed

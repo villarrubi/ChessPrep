@@ -192,7 +192,7 @@
       let player;
       if (selectedSource === "all") {
         setLoading(true, t("loading.combiningPlatforms"));
-        const combined = await api("/players/combined?max_games=100", {
+        const combined = await api("/players/combined?max_games=50", {
           method: "POST",
           body: JSON.stringify({
             lichess_username: query,
@@ -218,7 +218,7 @@
           source: sourceLabel(player.source)
         }));
         await api(
-          `/players/${encodeURIComponent(player.source)}/${encodeURIComponent(player.external_id)}/refresh-games?max_games=100`, {
+          `/players/${encodeURIComponent(player.source)}/${encodeURIComponent(player.external_id)}/refresh-games?max_games=50`, {
             method: "POST"
           });
       }
@@ -452,7 +452,7 @@
     button.classList.add("spinning");
     try {
       await api(
-        `/players/${encodeURIComponent(state.player.source)}/${encodeURIComponent(state.player.external_id)}/refresh-games?max_games=100`, {
+        `/players/${encodeURIComponent(state.player.source)}/${encodeURIComponent(state.player.external_id)}/refresh-games?max_games=50`, {
           method: "POST"
         });
       await loadPlayer(state.player);
@@ -474,7 +474,7 @@
     closeDialog("combine-dialog");
     setLoading(true, t("loading.combiningProfiles"));
     try {
-      const result = await api("/players/combined?max_games=100", {
+      const result = await api("/players/combined?max_games=50", {
         method: "POST",
         body: JSON.stringify({
           lichess_username: lichess || null,

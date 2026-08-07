@@ -73,6 +73,57 @@ class ParseResult:
     duplicates: int
 
 
+# Heavy move payloads are only needed when opening the viewer.
+GAME_LIST_EXCLUDE = {"moves", "moves_uci", "fens", "pgn"}
+
+
+def game_list_item(game: NormalizedGame) -> dict[str, object]:
+    return game.model_dump(mode="json", exclude=GAME_LIST_EXCLUDE)
+
+
+def hydrate_game_for_viewer(game: NormalizedGame) -> NormalizedGame:
+    """Fill deferred FEN/PGN fields when a single game is opened."""
+    needs_fens = len(game.fens) != len(game.moves_uci) + 1
+    needs_pgn = not game.pgn
+    if not needs_fens and not needs_pgn:
+        return game
+
+    updates: dict[str, object] = {}
+    if needs_fens:
+        board = chess.Board()
+        fens = [board.fen()]
+        for uci in game.moves_uci:
+            board.push_uci(uci)
+            fens.append(board.fen())
+        updates["fens"] = fens
+
+    if needs_pgn:
+        rebuilt = chess.pgn.Game()
+        for key, value in {
+            "Event": game.event or "?",
+            "Site": game.site or "?",
+            "Date": (game.date or "????.??.??").replace("-", "."),
+            "White": game.white,
+            "Black": game.black,
+            "Result": game.result,
+            "ECO": game.eco or "?",
+            "Opening": game.opening,
+            "TimeControl": game.time_control or "-",
+            "WhiteElo": str(game.white_elo or "?"),
+            "BlackElo": str(game.black_elo or "?"),
+        }.items():
+            rebuilt.headers[key] = value
+        if game.source_game_id:
+            rebuilt.headers["GameId"] = game.source_game_id
+        node = rebuilt
+        for uci in game.moves_uci:
+            node = node.add_main_variation(chess.Move.from_uci(uci))
+        exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=False)
+        updates["pgn"] = rebuilt.accept(exporter)
+
+    return game.model_copy(update=updates)
+
+
 def variant_label(value: str) -> str:
     cleaned = clean_untrusted_text(value, max_length=80)
     return VARIANT_LABELS.get(cleaned.casefold().replace("_", ""), cleaned or "Variante desconocida")
@@ -202,15 +253,15 @@ def parse_pgn(
             result = "*"
 
         board = game.board()
-        fens = [board.fen()]
         san_moves: list[str] = []
         uci_moves: list[str] = []
         try:
+            # Defer FEN/PGN materialization until a game is opened in the viewer.
+            # Building every ply's FEN and re-exporting PGN dominated parse CPU.
             for move in game.mainline_moves():
                 san_moves.append(board.san(move))
                 uci_moves.append(move.uci())
                 board.push(move)
-                fens.append(board.fen())
         except (ValueError, AssertionError) as exc:
             detail = clean_untrusted_text(exc, max_length=300)
             errors.append(f"Partida {game_number}: secuencia de jugadas incompleta ({detail}).")
@@ -243,7 +294,6 @@ def parse_pgn(
         if game_id in seen_game_ids:
             game_id = f"{source}-{short_hash}"
         seen_game_ids.add(game_id)
-        exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=False)
 
         games.append(
             NormalizedGame(
@@ -279,8 +329,8 @@ def parse_pgn(
                 ply_count=len(san_moves),
                 moves=san_moves,
                 moves_uci=uci_moves,
-                fens=fens,
-                pgn=game.accept(exporter),
+                fens=[],
+                pgn="",
                 dedupe_hash=dedupe_hash,
             )
         )
