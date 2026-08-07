@@ -91,7 +91,7 @@ def test_loader_cycles_all_pieces_without_disabling_its_timer():
     index = client.get("/").text
     script = client.get("/app.js").text
 
-    assert "/app.js?v=20260807-debug-b3d4b7" in index
+    assert "/app.js?v=20260807-manual-history" in index
     assert 'const LOADER_PIECES = ["♙", "♘", "♗", "♖", "♕", "♔"];' in script
     assert "const LOADER_INTERVAL_MS = 450;" in script
     assert "window.setInterval(advanceLoaderPiece, LOADER_INTERVAL_MS)" in script
@@ -107,7 +107,7 @@ def test_language_switcher_and_elo_calculator_are_available():
     assert 'id="language-button"' in index
     assert 'id="language-menu"' in index
     assert index.count('data-language="') == 5
-    assert "/i18n.js?v=20260807-strength-e4fix" in index
+    assert "/i18n.js?v=20260807-manual-history" in index
     assert 'const STORAGE_KEY = "chessprep_language";' in translations
     assert '{ code: "es"' in translations
     assert '{ code: "en"' in translations
@@ -221,7 +221,7 @@ def test_manual_moves_are_draggable_and_use_an_independent_engine():
     translations = client.get("/i18n.js").text
     styles = client.get("/styles.css").text
 
-    assert "/js/exploreMode.js?v=20260807-debug-b3d4b7" in index
+    assert "/js/exploreMode.js?v=20260807-manual-history" in index
     assert 'id="explore-toggle"' not in index
     assert "exploreEngine = new global.StockfishEngine()" in viewer_script
     assert "new global.ExploreMode(exploreEngine)" in viewer_script
@@ -239,9 +239,16 @@ def test_manual_moves_are_draggable_and_use_an_independent_engine():
     assert "setPosition(fen, ply)" in explore_script
     assert 'typeof this.onMove === "function"' in explore_script
     assert "this.analyzing) return" not in explore_script
+    assert "this.tries = []" in explore_script
+    assert "this.tries.push(entry)" in explore_script
+    assert "async _drainEvaluationQueue()" in explore_script
     assert "const evaluationId = ++this.evaluationId" in explore_script
+    assert "formatManualTryLine(entry, index)" in viewer_script
+    assert "tries.map((entry, index) => formatManualTryLine(entry, index))" in viewer_script
     assert "this._initPromise === guardedPromise" in engine_script
     assert '"analysis.manualHint"' in translations
+    assert "valora cada una del historial" in translations
+    assert ".manual-try" in styles
     assert '.board-square.drag-over' in styles
     assert '.board-piece[draggable="true"]' in styles
     assert '.board-square[draggable="true"]' not in styles

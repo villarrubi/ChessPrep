@@ -10,9 +10,11 @@
       this.chess = null;
       this.selectedSquare = null;
       this.legalTargets = [];
+      this.tries = [];
       this.lastTry = null;
       this.analyzing = false;
       this.evaluationId = 0;
+      this._draining = false;
       this.onChange = null;
       this.onMove = null;
       this.getSettings = null;
@@ -34,6 +36,7 @@
       this.chess = new global.Chess(fen);
       this.selectedSquare = null;
       this.legalTargets = [];
+      this.tries = [];
       this.lastTry = null;
       this._emit();
     }
@@ -53,6 +56,7 @@
       this.chess = null;
       this.selectedSquare = null;
       this.legalTargets = [];
+      this.tries = [];
       this.lastTry = null;
       this.analyzing = false;
       this._emit();
@@ -75,8 +79,10 @@
       this.chess.undo();
       this.selectedSquare = null;
       this.legalTargets = [];
-      this.lastTry = null;
+      this.tries.pop();
+      this.lastTry = this.tries[this.tries.length - 1] || null;
       this._emit();
+      void this._drainEvaluationQueue();
     }
 
     canMoveFrom(square) {
@@ -135,39 +141,63 @@
         this._emit();
         return false;
       }
+      const triedUci = `${move.from}${move.to}${move.promotion || ""}`;
+      const entry = {
+        san: move.san,
+        uci: triedUci,
+        fenBefore,
+        status: "pending",
+      };
+      this.tries.push(entry);
+      this.lastTry = entry;
       if (typeof this.onMove === "function") this.onMove(move, this);
       this._emit();
-      void this._evaluateLastMove(move, fenBefore);
+      void this._drainEvaluationQueue();
       return true;
     }
 
-    async _evaluateLastMove(move, fenBefore) {
-      // Manual analysis uses its own worker. A newer move cancels only the stale
-      // manual request, never the background analysis of the original game.
+    async _drainEvaluationQueue() {
+      if (this._draining) return;
+      this._draining = true;
+      try {
+        while (this.active) {
+          const entry = this.tries.find((item) => item.status === "pending");
+          if (!entry) break;
+          await this._evaluateTry(entry);
+        }
+      } finally {
+        this._draining = false;
+        if (this.active) {
+          this.analyzing = this.tries.some((item) => item.status === "pending" || item.status === "analyzing");
+          this._emit();
+        }
+      }
+    }
+
+    async _evaluateTry(entry) {
+      // Manual analysis uses its own worker. Undo / exit cancel the active
+      // request via evaluationId; completed earlier tries stay in history.
       const evaluationId = ++this.evaluationId;
-      const triedUci = `${move.from}${move.to}${move.promotion || ""}`;
       this.engine.terminate();
       this.analyzing = true;
-      this.lastTry = {
-        san: move.san,
-        uci: triedUci,
-        status: "analyzing",
-      };
+      entry.status = "analyzing";
       this._emit();
 
       try {
         await this.engine.init();
-        if (evaluationId !== this.evaluationId || !this.active) return;
+        if (evaluationId !== this.evaluationId || !this.active || !this.tries.includes(entry)) return;
 
+        const fenBefore = entry.fenBefore;
+        const triedUci = entry.uci;
         const sideToMove = fenBefore.split(" ")[1] || "w";
         const nodes = this._nodes();
         const best = await this.engine.analyzeFen(fenBefore, { nodes, multipv: 1 });
-        if (evaluationId !== this.evaluationId || !this.active) return;
+        if (evaluationId !== this.evaluationId || !this.active || !this.tries.includes(entry)) return;
         let playedScore = best.score;
         if (triedUci !== best.bestMove) {
           playedScore = await this.engine.evaluateMove(fenBefore, triedUci, { nodes });
         }
-        if (evaluationId !== this.evaluationId || !this.active) return;
+        if (evaluationId !== this.evaluationId || !this.active || !this.tries.includes(entry)) return;
         const cpl = global.MoveQuality.centipawnLoss(best.score, playedScore, sideToMove);
         const winLoss = global.MoveQuality.winChanceLoss(best.score, playedScore);
         const judgment = global.MoveQuality.classifyWinLoss(winLoss, {
@@ -177,8 +207,7 @@
           allowedMate: typeof playedScore?.mate === "number" && playedScore.mate < 0,
         });
 
-        this.lastTry = {
-          ...this.lastTry,
+        Object.assign(entry, {
           status: "done",
           judgment,
           glyph: global.MoveQuality.judgmentGlyph(judgment),
@@ -189,17 +218,16 @@
           bestSan: global.uciToSan(fenBefore, best.bestMove),
           score: global.toWhitePov(playedScore, sideToMove),
           bestScore: global.toWhitePov(best.score, sideToMove),
-        };
+        });
       } catch (error) {
-        if (evaluationId !== this.evaluationId || !this.active) return;
-        this.lastTry = {
-          ...this.lastTry,
+        if (evaluationId !== this.evaluationId || !this.active || !this.tries.includes(entry)) return;
+        Object.assign(entry, {
           status: "error",
           error: error.message || String(error),
-        };
+        });
       } finally {
         if (evaluationId === this.evaluationId && this.active) {
-          this.analyzing = false;
+          this.analyzing = this.tries.some((item) => item.status === "pending" || item.status === "analyzing");
           this._emit();
         }
       }
@@ -208,6 +236,9 @@
     _cancelEvaluation() {
       this.evaluationId += 1;
       this.analyzing = false;
+      for (const entry of this.tries) {
+        if (entry.status === "analyzing") entry.status = "pending";
+      }
       try { this.engine.terminate(); } catch { /* ignore */ }
     }
 

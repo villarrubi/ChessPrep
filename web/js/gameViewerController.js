@@ -509,7 +509,11 @@
 
   function currentPlyEval() {
     if (explore.canUndo()) {
-      return explore.lastTry?.status === "done" ? explore.lastTry.score : null;
+      const tries = explore.tries || [];
+      for (let i = tries.length - 1; i >= 0; i -= 1) {
+        if (tries[i].status === "done") return tries[i].score;
+      }
+      return null;
     }
     return state.analysis?.evals?.[state.ply] || null;
   }
@@ -525,6 +529,62 @@
     const cp = `${Math.round(Number(judgment.cpl) || 0)} cp`;
     if (!Number.isFinite(Number(judgment.winLoss))) return cp;
     return `${t("analysis.winLoss")} ${formatNumber(judgment.winLoss)} pp · ${cp}`;
+  }
+
+  function formatManualTrySummary(entry) {
+    if (!entry) return t("analysis.chooseMove");
+    if (entry.status === "pending" || entry.status === "analyzing") {
+      return `${t("analysis.yourMove")} <strong>${escapeHtml(entry.san)}</strong> · ${t("analysis.evaluatingMove")}`;
+    }
+    if (entry.status === "error") {
+      return escapeHtml(entry.error || t("analysis.evaluateError"));
+    }
+    if (entry.status !== "done") return t("analysis.chooseMove");
+    return (
+      `${t("analysis.yourMove")} <strong>${escapeHtml(entry.san)}</strong>` +
+      `${entry.glyph ? ` <span class="judgment ${escapeHtml(entry.judgment)}">${escapeHtml(entry.glyph)}</span>` : ""}` +
+      ` · ${t("quality.best")} <strong>${escapeHtml(entry.bestSan || "—")}</strong>` +
+      ` · ${escapeHtml(qualityLossText(entry))}` +
+      ` · <span class="judgment ${escapeHtml(entry.judgment)}">${escapeHtml(t(`quality.${entry.judgment}`))}</span>`
+    );
+  }
+
+  function formatManualTryLine(entry, index) {
+    const plyLabel = index + 1;
+    if (entry.status === "pending" || entry.status === "analyzing") {
+      return `<div class="manual-try analyzing">` +
+        `<span class="manual-try-ply">${plyLabel}</span>` +
+        `<span class="manual-try-san">${escapeHtml(entry.san)}</span>` +
+        `<span class="manual-try-detail">${escapeHtml(t("analysis.evaluatingMove"))}</span>` +
+        `</div>`;
+    }
+    if (entry.status === "error") {
+      return `<div class="manual-try error">` +
+        `<span class="manual-try-ply">${plyLabel}</span>` +
+        `<span class="manual-try-san">${escapeHtml(entry.san)}</span>` +
+        `<span class="manual-try-detail">${escapeHtml(entry.error || t("analysis.evaluateError"))}</span>` +
+        `</div>`;
+    }
+    return `<div class="manual-try ${escapeHtml(entry.judgment || "")}">` +
+      `<span class="manual-try-ply">${plyLabel}</span>` +
+      `<span class="manual-try-san">${escapeHtml(entry.san)}${entry.glyph ? ` <span class="judgment ${escapeHtml(entry.judgment)}">${escapeHtml(entry.glyph)}</span>` : ""}</span>` +
+      `<span class="manual-try-detail">` +
+      `<span class="judgment ${escapeHtml(entry.judgment)}">${escapeHtml(t(`quality.${entry.judgment}`))}</span>` +
+      ` · ${t("quality.best")} <strong>${escapeHtml(entry.bestSan || "—")}</strong>` +
+      ` · ${escapeHtml(qualityLossText(entry))}` +
+      `</span>` +
+      `</div>`;
+  }
+
+  function formatManualTryCompact(entry) {
+    if (!entry) return "";
+    if (entry.status === "pending" || entry.status === "analyzing") {
+      return `<strong>${escapeHtml(entry.san)}</strong>…`;
+    }
+    if (entry.status === "error") {
+      return `<strong>${escapeHtml(entry.san)}</strong> ${escapeHtml(t("analysis.evaluateError"))}`;
+    }
+    return `<strong>${escapeHtml(entry.san)}</strong> <span class="judgment ${escapeHtml(entry.judgment)}">${escapeHtml(t(`quality.${entry.judgment}`))}</span>`;
   }
 
   function renderAnalysisSummary() {
@@ -547,15 +607,7 @@
 
     let moveLine = t("viewer.initial");
     if (explore.canUndo()) {
-      if (explore.lastTry?.status === "analyzing") moveLine = t("analysis.evaluatingMove");
-      else if (explore.lastTry?.status === "done") {
-        moveLine =
-          `${t("analysis.yourMove")} <strong>${escapeHtml(explore.lastTry.san)}</strong>${explore.lastTry.glyph ? ` <span class="judgment ${escapeHtml(explore.lastTry.judgment)}">${escapeHtml(explore.lastTry.glyph)}</span>` : ""} · ${t("quality.best")} <strong>${escapeHtml(explore.lastTry.bestSan || "—")}</strong> · ${escapeHtml(qualityLossText(explore.lastTry))} · <span class="judgment ${escapeHtml(explore.lastTry.judgment)}">${escapeHtml(t(`quality.${explore.lastTry.judgment}`))}</span>`;
-      } else if (explore.lastTry?.status === "error") {
-        moveLine = escapeHtml(explore.lastTry.error || t("analysis.evaluateError"));
-      } else {
-        moveLine = t("analysis.chooseMove");
-      }
+      moveLine = formatManualTrySummary(explore.lastTry);
     } else if (judgment) {
       moveLine =
         `${t("analysis.move")} <strong>${escapeHtml(judgment.san)}</strong>${judgment.glyph ? ` <span class="judgment ${escapeHtml(judgment.judgment)}">${escapeHtml(judgment.glyph)}</span>` : ""} · ${t("quality.best")} <strong>${escapeHtml(judgment.bestSan || "—")}</strong> · ${escapeHtml(qualityLossText(judgment))} · <span class="judgment ${escapeHtml(judgment.judgment)}">${escapeHtml(t(`quality.${judgment.judgment}`))}</span>`;
@@ -665,7 +717,12 @@
       return;
     }
     if (explore.canUndo()) {
-      el.innerHTML = `<div class="analysis-line-empty">${escapeHtml(t("analysis.manualHint"))}</div>`;
+      const tries = explore.tries || [];
+      if (!tries.length) {
+        el.innerHTML = `<div class="analysis-line-empty">${escapeHtml(t("analysis.manualHint"))}</div>`;
+        return;
+      }
+      el.innerHTML = tries.map((entry, index) => formatManualTryLine(entry, index)).join("");
       return;
     }
     if (!state.liveLines.length) {
@@ -952,15 +1009,12 @@
       feedback.textContent = "";
       return;
     }
-    if (explore.lastTry?.status === "analyzing") feedback.innerHTML = t("dynamic.evaluating");
-    else if (explore.lastTry?.status === "done") {
-      feedback.innerHTML =
-        `<strong>${escapeHtml(explore.lastTry.san)}</strong> ${escapeHtml(t(`quality.${explore.lastTry.judgment}`))} · ${t("dynamic.optimal")} <strong>${escapeHtml(explore.lastTry.bestSan || "—")}</strong>`;
-    } else if (explore.lastTry?.status === "error") {
-      feedback.textContent = explore.lastTry.error || t("dynamic.engineError");
-    } else {
+    const tries = explore.tries || [];
+    if (!tries.length) {
       feedback.textContent = t("dynamic.clickPiece");
+      return;
     }
+    feedback.innerHTML = tries.map((entry) => formatManualTryCompact(entry)).join(" · ");
   }
 
   function renderInteractiveBoardState() {
