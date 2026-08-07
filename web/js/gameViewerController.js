@@ -584,7 +584,10 @@
     if (entry.status === "error") {
       return `<strong>${escapeHtml(entry.san)}</strong> ${escapeHtml(t("analysis.evaluateError"))}`;
     }
-    return `<strong>${escapeHtml(entry.san)}</strong> <span class="judgment ${escapeHtml(entry.judgment)}">${escapeHtml(t(`quality.${entry.judgment}`))}</span>`;
+    const glyph = entry.glyph
+      ? ` <span class="judgment ${escapeHtml(entry.judgment)}">${escapeHtml(entry.glyph)}</span>`
+      : "";
+    return `<strong>${escapeHtml(entry.san)}</strong>${glyph} <span class="judgment ${escapeHtml(entry.judgment)}">${escapeHtml(t(`quality.${entry.judgment}`))}</span>`;
   }
 
   function renderAnalysisSummary() {

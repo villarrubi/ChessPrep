@@ -55,9 +55,9 @@
 
   function judgmentGlyph(judgment) {
     return ({
-      best: "",
+      best: "★",
       excellent: "!",
-      good: "",
+      good: "✓",
       inaccuracy: "?!",
       mistake: "?",
       blunder: "??",
