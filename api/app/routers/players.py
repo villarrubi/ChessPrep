@@ -131,7 +131,7 @@ def create_players_router(services: ApplicationServices) -> APIRouter:
         date_from: str | None = Query(None, alias="from"),
         date_to: str | None = Query(None, alias="to"),
         page: int = Query(1, ge=1),
-        page_size: int = Query(20, ge=1, le=250),
+        page_size: int = Query(20, ge=1, le=500),
     ):
         dataset = services.online_players.get_dataset(source, external_id)
         games = services.datasets.filter(
@@ -196,8 +196,12 @@ def create_players_router(services: ApplicationServices) -> APIRouter:
         dataset = services.online_players.get_dataset(source, external_id)
         stats = services.datasets.statistics(dataset, mode, pace)
         openings = stats["openings"]
+        opening_decisions = stats["opening_decisions"]
         if color:
             openings = [item for item in openings if item["color"] == color]
+            opening_decisions = (
+                {color: opening_decisions[color]} if color in opening_decisions else {}
+            )
         return {
             "mode": stats["mode"],
             "pace": stats["pace"],
@@ -205,6 +209,7 @@ def create_players_router(services: ApplicationServices) -> APIRouter:
             "sources": stats["sources"],
             "date_range": stats["date_range"],
             "openings": openings,
+            "opening_decisions": opening_decisions,
         }
 
     @router.get("/games/{source}/{game_id}")

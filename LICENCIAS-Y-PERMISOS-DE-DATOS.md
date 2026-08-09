@@ -24,6 +24,7 @@ La existencia de un proveedor en el código no significa que esté autorizado pa
 
 | Fuente | Evidencia disponible | Estado | Decisión actual para ChessPrep |
 |---|---|---:|---|
+| [Lichess chess-openings](https://github.com/lichess-org/chess-openings) | Base de nombres y posiciones publicada bajo CC0 1.0 | ✅ **Utilizable** | Copia local fijada a una revisión concreta para clasificar aperturas y transposiciones; licencia incluida junto a los datos |
 | [Lichess](https://lichess.org/) | API y términos públicos; exportaciones bajo CC0; respuesta positiva recibida | ✅ **Cerrado** | Integración autorizada bajo las condiciones públicas y cerrada técnicamente para un único proceso: una petición simultánea como máximo y pausa global mínima de 60 segundos tras `429`. Solo requiere la configuración ordinaria de despliegue del `User-Agent` real |
 | [Lumbra's Gigabase](https://lumbrasgigabase.com/) | CC BY-NC-SA 4.0 pública y permiso por correo de Michael Jansen; aclaración enviada sobre el significado de “open” | ⏸️ | Aplazado por decisión del proyecto. No hay código ni datos de Lumbra en ChessPrep y no se activará hasta retomarlo y cerrar por escrito la aclaración pendiente |
 | [Chess.com](https://chess.com/) | PubAPI documentada; notificación enviada; sin confirmación específica | ⚠️ | No activar públicamente hasta aclarar por escrito el uso como aplicación externa bajo los términos de marzo de 2026 |
@@ -66,6 +67,10 @@ Esta respuesta es una confirmación positiva de conocimiento, pero no sustituye 
 - No facilitar asistencia durante una partida en curso y advertirlo claramente al usuario.
 
 **Conclusión:** expediente cerrado para el alcance actual. La fuente es utilizable conforme a sus condiciones públicas y la respuesta recibida acredita que Lichess conoce favorablemente el proyecto. Los controles de concurrencia y `429` están implementados y cubiertos por pruebas. Cada despliegue debe conservar la atribución, identificar correctamente al cliente y mantener un único proceso o un bloqueo distribuido equivalente.
+
+### Base de aperturas de Lichess
+
+La base independiente [`lichess-org/chess-openings`](https://github.com/lichess-org/chess-openings) declara sus datos de nombres, líneas y posiciones en el dominio público mediante CC0 1.0. ChessPrep incorpora una copia derivada de la revisión `4b8622759e7ae6f93f011cc6c83a3823401ab45e`, reducida a ECO, nombre y EPD, para identificar aperturas por la posición alcanzada y admitir transposiciones. El archivo de procedencia y el texto completo de CC0 se conservan en `api/app/data/openings/`.
 
 ---
 

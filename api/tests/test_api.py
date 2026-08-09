@@ -131,7 +131,7 @@ def test_loader_cycles_all_pieces_without_disabling_its_timer():
     index = client.get("/").text
     script = client.get("/app.js").text
 
-    assert "/app.js?v=20260807-progress-ui" in index
+    assert "/app.js?v=20260809-repertoire-map" in index
     assert 'const LOADER_PIECES = ["♙", "♘", "♗", "♖", "♕", "♔"];' in script
     assert "const LOADER_INTERVAL_MS = 450;" in script
     assert "window.setInterval(advanceLoaderPiece, LOADER_INTERVAL_MS)" in script
@@ -147,7 +147,7 @@ def test_language_switcher_and_elo_calculator_are_available():
     assert 'id="language-button"' in index
     assert 'id="language-menu"' in index
     assert index.count('data-language="') == 5
-    assert "/i18n.js?v=20260807-progress-ui" in index
+    assert "/i18n.js?v=20260809-repertoire-map" in index
     assert 'const STORAGE_KEY = "chessprep_language";' in translations
     assert '{ code: "es"' in translations
     assert '{ code: "en"' in translations
@@ -377,6 +377,27 @@ def test_game_result_badges_keep_their_layout_and_use_stable_color_markers():
     assert ".game-player-meta" in styles
 
 
+def test_repertoire_map_distinguishes_player_and_opponent_decisions():
+    index = client.get("/").text
+    script = client.get("/js/dossierController.js").text
+    translations = client.get("/i18n.js").text
+    styles = client.get("/styles.css").text
+
+    assert 'data-repertoire-view="decisions"' in index
+    assert 'data-repertoire-view="openings"' in index
+    assert 'data-decision-color="white"' in index
+    assert 'id="decision-breadcrumbs"' in index
+    assert 'id="decision-choices"' in index
+    assert "function renderDecisionMap()" in script
+    assert 'node.actor === "player"' in script
+    assert "function selectDecisionGames(decision)" in script
+    assert '"repertoire.you": "Tú"' in translations
+    assert '"repertoire.opponent": "Rival"' in translations
+    assert ".decision-choice-main" in styles
+    assert ".actor-marker.player" in styles
+    assert ".actor-marker.opponent" in styles
+
+
 def test_pgn_import_excludes_non_standard_variants():
     standard = """[Event "Standard"]
 [White "Target"]
@@ -433,6 +454,9 @@ def test_demo_stats_are_traced_and_consistent():
     assert payload["overall"]["losses"] == 3
     assert payload["mode_breakdown"] == {"online": 6, "otb": 6}
     assert payload["sources"] == ["demo"]
+    assert payload["opening_decisions"]["white"]["games"] == 7
+    assert payload["opening_decisions"]["black"]["games"] == 5
+    assert payload["opening_decisions"]["white"]["roots"]
 
 
 def test_filters_and_game_traceability():

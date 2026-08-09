@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import csv
 import hashlib
 import io
 import re
 from collections import Counter
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 
 import chess.pgn
 
@@ -75,6 +78,92 @@ class ParseResult:
 
 # Heavy move payloads are only needed when opening the viewer.
 GAME_LIST_EXCLUDE = {"moves", "moves_uci", "fens", "pgn"}
+OPENING_DATA_PATH = (
+    Path(__file__).resolve().parents[1] / "data" / "openings" / "openings.tsv"
+)
+UNKNOWN_OPENING_LABELS = {
+    "?",
+    "unknown",
+    "unknown opening",
+    "unclassified",
+    "apertura sin clasificar",
+}
+
+
+@dataclass(frozen=True)
+class OpeningMatch:
+    eco: str
+    name: str
+
+
+@dataclass(frozen=True)
+class OpeningStep:
+    position_id: str
+    eco: str
+    name: str
+    ply: int
+
+
+@lru_cache(maxsize=1)
+def _opening_position_index() -> dict[str, OpeningMatch]:
+    """Load the local ECO database, indexed by position rather than move order."""
+    index: dict[str, OpeningMatch] = {}
+    try:
+        with OPENING_DATA_PATH.open(encoding="utf-8", newline="") as handle:
+            for row in csv.DictReader(handle, delimiter="\t"):
+                eco = row.get("eco", "")
+                name = row.get("name", "")
+                epd = row.get("epd", "")
+                if re.fullmatch(r"[A-E]\d{2}", eco) and name and epd:
+                    index[epd] = OpeningMatch(eco=eco, name=name)
+    except (OSError, csv.Error):
+        # Importing PGNs must remain available even if a deployment omits the
+        # optional database. The small built-in ECO fallback is used instead.
+        return {}
+    return index
+
+
+def opening_path(moves_uci: list[str]) -> list[OpeningStep]:
+    """Return meaningful named positions reached by the main line.
+
+    Matching EPD positions, not literal move sequences, makes move-order
+    transpositions equivalent. Consecutive positions with the same ECO and
+    name are collapsed because they do not represent a new repertoire choice.
+    """
+    index = _opening_position_index()
+    if not index:
+        return []
+
+    board = chess.Board()
+    path: list[OpeningStep] = []
+    for ply, uci in enumerate(moves_uci, start=1):
+        try:
+            board.push_uci(uci)
+        except (ValueError, AssertionError):
+            break
+        candidate = index.get(board.epd())
+        if candidate is None:
+            continue
+        if path and (candidate.eco, candidate.name) == (path[-1].eco, path[-1].name):
+            continue
+        epd = board.epd()
+        path.append(
+            OpeningStep(
+                position_id=hashlib.sha256(epd.encode("utf-8")).hexdigest()[:16],
+                eco=candidate.eco,
+                name=candidate.name,
+                ply=ply,
+            )
+        )
+    return path
+
+
+def _classify_opening(moves_uci: list[str]) -> OpeningMatch | None:
+    """Return the deepest known opening reached in the main line."""
+    path = opening_path(moves_uci)
+    if not path:
+        return None
+    return OpeningMatch(eco=path[-1].eco, name=path[-1].name)
 
 
 def game_list_item(game: NormalizedGame) -> dict[str, object]:
@@ -182,13 +271,25 @@ def _time_class(control: str | None) -> str | None:
     return "classical"
 
 
-def _opening_name(headers: chess.pgn.Headers, eco: str | None) -> str:
+def _opening_metadata(
+    headers: chess.pgn.Headers,
+    detected: OpeningMatch | None,
+) -> tuple[str | None, str]:
+    raw_eco = clean_untrusted_text(headers.get("ECO"), max_length=8).upper()
+    header_eco = raw_eco if re.fullmatch(r"[A-E]\d{2}", raw_eco) else None
     explicit = clean_untrusted_text(headers.get("Opening"), max_length=180)
     variation = clean_untrusted_text(headers.get("Variation"), max_length=120)
-    if explicit and explicit not in {"?", "Unknown"}:
+    if explicit and explicit.casefold() not in UNKNOWN_OPENING_LABELS:
         opening = f"{explicit} · {variation}" if variation and variation != "?" else explicit
-        return clean_untrusted_text(opening, max_length=240)
-    return ECO_NAMES.get(eco or "", "Apertura sin clasificar")
+        return header_eco or (detected.eco if detected else None), clean_untrusted_text(
+            opening,
+            max_length=240,
+        )
+    if detected is not None:
+        # When no useful name was supplied, the position is internally
+        # consistent and more trustworthy than a possibly stale ECO header.
+        return detected.eco, detected.name
+    return header_eco, ECO_NAMES.get(header_eco or "", "Apertura sin clasificar")
 
 
 def _fide_id(value: str | None) -> str | None:
@@ -271,8 +372,8 @@ def parse_pgn(
             continue
 
         date = _normalise_date(headers.get("UTCDate") or headers.get("Date"))
-        raw_eco = clean_untrusted_text(headers.get("ECO"), max_length=8).upper()
-        eco = raw_eco if re.fullmatch(r"[A-E]\d{2}", raw_eco) else None
+        detected_opening = _classify_opening(uci_moves)
+        eco, opening = _opening_metadata(headers, detected_opening)
         color, resolved_target = _target_color(white, black, target_player)
         fingerprint = "|".join(
             [white.casefold(), black.casefold(), date or "", result, " ".join(uci_moves[:24])]
@@ -317,7 +418,7 @@ def parse_pgn(
                 ),
                 site=site_header if site_header and site_header != "?" else None,
                 eco=eco,
-                opening=_opening_name(headers, eco),
+                opening=opening,
                 time_control=(
                     clean_untrusted_text(headers.get("TimeControl"), max_length=64)
                     if headers.get("TimeControl") not in {None, "?", "-"}

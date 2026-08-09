@@ -7,7 +7,7 @@ Aplicación web de preparación ajedrecística para torneos. Convierte partidas 
 - Búsqueda de usuarios exactos de Lichess y Chess.com.
 - Dossier combinado para unir ambas plataformas aunque los alias sean distintos.
 - Dossier de jugador con score global, forma reciente y desglose por color.
-- Repertorio por ECO, apertura, color, frecuencia y score.
+- Repertorio navegable por decisiones propias y respuestas del rival, además del resumen por ECO, apertura, color, frecuencia y score.
 - Selector de ritmo `global / bullet / blitz / rápida / lenta` aplicado a partidas y estadísticas; global incluye todos los ritmos estándar.
 - Solo se analizan partidas de ajedrez estándar; Chess960, pasapiezas, Crazyhouse y demás variantes se excluyen tanto desde los proveedores como al importar PGN.
 - Lista de partidas con filtros por texto, color, resultado y apertura.
@@ -63,7 +63,9 @@ La interfaz solicita como máximo las 100 partidas estándar más recientes de c
 
 Lichess se consulta solo con sus modalidades estándar (`ultraBullet`, `bullet`, `blitz`, `rapid`, `classical` y `correspondence`). En Chess.com se aceptan exclusivamente partidas con `rules="chess"`. La misma regla se aplica a los PGN importados: se omiten Chess960, pasapiezas, Crazyhouse, atómico, antiajedrez y cualquier partida declarada como variante o con una posición inicial no estándar. Cuando el proveedor permite contabilizarlas, la respuesta incluye un aviso con el número de partidas descartadas.
 
-Un ECO ausente se conserva como valor nulo y se representa visualmente con `—`. Al pulsar una fila de aperturas, el listado se filtra por ECO, nombre y color; por tanto, el total mostrado corresponde exactamente al grupo seleccionado, incluso en aperturas sin ECO.
+Cuando un PGN no aporta `Opening` o `ECO`, ChessPrep recorre sus jugadas y busca la posición más profunda en una base local de 3.810 posiciones ECO. La coincidencia se hace por EPD, no por la secuencia literal, por lo que reconoce transposiciones; si la partida se desvía por una línea secundaria conserva la última apertura conocida. Solo permanece sin clasificar cuando ni las cabeceras ni las posiciones permiten identificarla.
+
+El panel **Repertorio** ofrece dos vistas. **Decisiones** recorre las posiciones conocidas como un mapa: cada rama indica si la jugada que la introdujo fue del jugador o del rival, calcula su porcentaje dentro de la posición anterior y permite abrir exactamente las partidas de esa rama. Las posiciones idénticas alcanzadas por órdenes distintos se unifican. **Aperturas** conserva el resumen tradicional por ECO, nombre y color y su filtro exacto de partidas.
 
 ### Resultados OTB de Info64
 
@@ -124,15 +126,15 @@ Los dos Dockerfiles y `docker-compose.yml` están preparados para la arquitectur
 .venv\Scripts\python -m pytest -q
 ```
 
-Las pruebas comprueban que el ejemplo sintético no se precarga ni se confunde con una fuente real, los cinco idiomas, las tablas y reglas de la calculadora FIDE, además de los totales estadísticos, los filtros por ritmo y apertura, la exclusión de variantes, la trazabilidad de una partida, las posiciones del visor, las integraciones de proveedor, el historial de los tres Elo FIDE y la importación PGN independiente con deduplicación e inferencia de jugador.
+Las pruebas comprueban que el ejemplo sintético no se precarga ni se confunde con una fuente real, los cinco idiomas, las tablas y reglas de la calculadora FIDE, además de los totales estadísticos, los filtros por ritmo y apertura, el reconocimiento de aperturas y transposiciones, la atribución de decisiones al jugador o al rival, la exclusión de variantes, la trazabilidad de una partida, las posiciones del visor, las integraciones de proveedor, el historial de los tres Elo FIDE y la importación PGN independiente con deduplicación e inferencia de jugador.
 
 ### Estado de verificación
 
 A fecha de esta revisión, el estado es:
 
-- **53 pruebas automatizadas superadas**.
+- **69 pruebas automatizadas superadas**.
 - Todo el backend compila correctamente con `python -m compileall api`.
-- Los 11 módulos JavaScript pasan validación sintáctica.
+- Los 13 scripts declarados por la interfaz y el service worker pasan validación sintáctica.
 - Todos los CSS y scripts referenciados por `index.html` se sirven con código HTTP 200 y las cabeceras de seguridad previstas.
 - El contrato OpenAPI conserva los 18 endpoints públicos anteriores a la refactorización.
 - La construcción Docker queda pendiente por falta de Docker en el equipo; no por un error conocido en los archivos de despliegue.

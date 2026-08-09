@@ -244,9 +244,10 @@ El resultado debe incluir siempre el tamaño de la muestra, fuentes, rango tempo
 ### 8.1 Agregados prioritarios (MVP)
 
 1. **Por color:** partidas, score, % W/D/L con blancas y con negras.
-2. **Por apertura:** top ECO/nombres, frecuencia, score y desglose por color. Un ECO ausente permanece como `null`; `—` es únicamente su representación visual y el enlace filtra por ECO, nombre y color.
-3. **Lista enlazable:** cada celda/stats debe poder abrir el listado de partidas subyacente → visor.
-4. **Piezas (v1):** a partir del PGN parseado, métricas simples por tipo de pieza del jugador (frecuencia de movimientos, capturas realizadas/sufridas, presencia en el último tercio de la partida). Refinar definición en implementación; siempre con `n` visible.
+2. **Por apertura:** top ECO/nombres, frecuencia, score y desglose por color. Si faltan las cabeceras, ECO y nombre se infieren desde la posición más profunda de una base local; `null` queda reservado para partidas que tampoco puedan clasificarse por jugadas.
+3. **Mapa de repertorio:** grafo por color de las posiciones de apertura alcanzadas. La jugada que introduce cada nodo determina si fue una decisión del jugador o del rival; cada arista declara frecuencia y score dentro de la posición anterior, conserva los IDs trazables y unifica transposiciones por EPD.
+4. **Lista enlazable:** cada celda/stats debe poder abrir el listado de partidas subyacente → visor.
+5. **Piezas (v1):** a partir del PGN parseado, métricas simples por tipo de pieza del jugador (frecuencia de movimientos, capturas realizadas/sufridas, presencia en el último tercio de la partida). Refinar definición en implementación; siempre con `n` visible.
 
 ### 8.2 Stockfish (implementado en el cliente)
 
@@ -352,7 +353,7 @@ Móvil: responsive; sin app store. PWA opcional más adelante.
 
 ### 11.1 Estado de validación del despliegue
 
-Tras la separación del backend y los controladores del frontend se han validado 53 pruebas automatizadas, la compilación de todos los módulos Python, la sintaxis de los 11 archivos JavaScript y la entrega HTTP de todos los recursos declarados en `index.html`. El contrato OpenAPI conserva los 18 endpoints públicos existentes antes de la refactorización.
+Tras la separación del backend y los controladores del frontend se han validado 69 pruebas automatizadas, la compilación de todos los módulos Python, la sintaxis de los 13 scripts declarados en `index.html` y del service worker, y la entrega HTTP de todos los recursos de la interfaz. El contrato OpenAPI conserva los 18 endpoints públicos existentes antes de la refactorización.
 
 Los archivos Docker también se han adaptado: la imagen de API incluye `web/js` y `web/vendor`, mientras que la imagen Nginx continúa publicando esos directorios y redirigiendo `/api`. Sin embargo, el equipo donde se realizó esta revisión no dispone del ejecutable Docker. Por ello, la siguiente comprobación sigue pendiente y debe hacerse en un entorno con Docker instalado:
 

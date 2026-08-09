@@ -15,7 +15,7 @@
     <title>ChessPrep — Conoce el tablero antes de sentarte</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%2310231f%22/><text x=%2232%22 y=%2246%22 text-anchor=%22middle%22 font-size=%2242%22 fill=%22%23f4f1e9%22>♞</text></svg>" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="stylesheet" href="/styles.css?v=20260809-legal-footer" />
+    <link rel="stylesheet" href="/styles.css?v=20260809-repertoire-map" />
   </head>
   <body>
     <div class="page-shell">
@@ -188,21 +188,44 @@
 
           <div class="analysis-grid">
             <article class="panel openings-panel">
-              <div class="panel-header">
-                <div><p class="panel-eyebrow">Repertorio</p><h3>Aperturas más frecuentes</h3></div>
-                <div class="color-filter" role="group" aria-label="Filtrar aperturas por color">
-                  <button class="active" type="button" data-opening-color="all">Todas</button>
-                  <button type="button" data-opening-color="white">Blancas</button>
-                  <button type="button" data-opening-color="black">Negras</button>
+              <div class="panel-header repertoire-header">
+                <div><p class="panel-eyebrow">Repertorio</p><h3 id="repertoire-title">Mapa de decisiones</h3></div>
+                <div class="repertoire-view-switch" role="tablist" aria-label="Vista del repertorio">
+                  <button id="repertoire-decisions-tab" class="active" type="button" role="tab" aria-selected="true" aria-controls="decision-map-view" data-repertoire-view="decisions">Decisiones</button>
+                  <button id="repertoire-openings-tab" type="button" role="tab" aria-selected="false" aria-controls="openings-table-view" data-repertoire-view="openings">Aperturas</button>
                 </div>
               </div>
-              <div class="table-wrap">
-                <table>
-                  <thead><tr><th>Apertura</th><th>Color</th><th>Partidas</th><th>Score</th><th></th></tr></thead>
-                  <tbody id="openings-body"></tbody>
-                </table>
+
+              <div id="decision-map-view" class="decision-map-view" role="tabpanel" aria-labelledby="repertoire-decisions-tab">
+                <div class="decision-toolbar">
+                  <div class="color-filter" role="group" aria-label="Color del repertorio">
+                    <button class="active" type="button" data-decision-color="white">Blancas</button>
+                    <button type="button" data-decision-color="black">Negras</button>
+                  </div>
+                  <span id="decision-coverage"></span>
+                </div>
+                <nav id="decision-breadcrumbs" class="decision-breadcrumbs" aria-label="Ruta de apertura"></nav>
+                <div id="decision-current" class="decision-current"></div>
+                <div id="decision-choices" class="decision-choices"></div>
+                <p class="panel-footnote decision-note">Selecciona una rama para continuar; «Ver partidas» abre la muestra correspondiente.</p>
               </div>
-              <p class="panel-footnote">Selecciona una apertura para ver las partidas que forman el dato.</p>
+
+              <div id="openings-table-view" role="tabpanel" aria-labelledby="repertoire-openings-tab" hidden>
+                <div class="opening-table-toolbar">
+                  <div class="color-filter" role="group" aria-label="Filtrar aperturas por color">
+                    <button class="active" type="button" data-opening-color="all">Todas</button>
+                    <button type="button" data-opening-color="white">Blancas</button>
+                    <button type="button" data-opening-color="black">Negras</button>
+                  </div>
+                </div>
+                <div class="table-wrap">
+                  <table>
+                    <thead><tr><th>Apertura</th><th>Color</th><th>Partidas</th><th>Score</th><th></th></tr></thead>
+                    <tbody id="openings-body"></tbody>
+                  </table>
+                </div>
+                <p class="panel-footnote openings-note">Selecciona una apertura para ver las partidas que forman el dato.</p>
+              </div>
             </article>
 
             <article class="panel color-panel">
@@ -573,7 +596,7 @@
     </div>
     <div class="toast-region" id="toast-region" aria-live="polite"></div>
 
-    <script src="/i18n.js?v=20260807-progress-ui" defer></script>
+    <script src="/i18n.js?v=20260809-repertoire-map" defer></script>
     <script src="/js/storage.js?v=20260803-pwa-storage1" defer></script>
     <script src="/js/moveQuality.js?v=20260807-best-color" defer></script>
     <script src="/js/stockfishEngine.js?v=20260807-best-color" defer></script>
@@ -581,11 +604,11 @@
     <script src="/js/exploreMode.js?v=20260807-best-color" defer></script>
     <!-- Feature modules register their controllers; app.js composes them last. -->
     <script src="/js/gameViewerController.js?v=20260807-best-no-row" defer></script>
-    <script src="/js/dossierController.js?v=20260807-merge-short" defer></script>
+    <script src="/js/dossierController.js?v=20260809-repertoire-map" defer></script>
     <script src="/js/otbController.js?v=20260807-best-color" defer></script>
     <script src="/js/pgnImportController.js?v=20260807-best-color" defer></script>
     <script src="/js/eloCalculator.js?v=20260807-best-color" defer></script>
-    <script src="/app.js?v=20260807-progress-ui" defer></script>
+    <script src="/app.js?v=20260809-repertoire-map" defer></script>
     <script src="/js/registerServiceWorker.js?v=20260807-progress-ui" defer></script>
   </body>
 </html>

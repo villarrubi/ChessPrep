@@ -61,6 +61,19 @@
       $$('[data-search-mode]').forEach((button) => {
         button.addEventListener("click", () => selectHeroSearchMode(button.dataset.searchMode));
       });
+      $$('[data-repertoire-view]').forEach((button) => {
+        button.addEventListener("click", () => {
+          state.repertoireView = button.dataset.repertoireView;
+          renderRepertoire();
+        });
+      });
+      $$('[data-decision-color]').forEach((button) => {
+        button.addEventListener("click", () => {
+          state.decisionColor = button.dataset.decisionColor;
+          state.decisionPath = [];
+          renderDecisionMap();
+        });
+      });
       $("#load-demo").addEventListener("click", () => loadDemo(true));
       $("#refresh-player").addEventListener("click", refreshCurrentPlayer);
       $$("[data-pace]").forEach((button) => {
@@ -137,7 +150,7 @@
           `/players/${encodeURIComponent(player.source)}/${encodeURIComponent(player.external_id)}/stats?mode=combined&pace=${state.pace}`
           ),
         api(
-          `/players/${encodeURIComponent(player.source)}/${encodeURIComponent(player.external_id)}/games?mode=combined&pace=${state.pace}&page_size=250`
+          `/players/${encodeURIComponent(player.source)}/${encodeURIComponent(player.external_id)}/games?mode=combined&pace=${state.pace}&page_size=500`
           ),
       ]);
       state.player = detail;
@@ -145,6 +158,7 @@
       state.games = games.items;
       state.datasetId = games.trace?.dataset_id || null;
       state.openingFilter = null;
+      state.decisionPath = [];
       $("#analisis").hidden = false;
       $("#partidas").hidden = false;
       renderAll();
@@ -257,11 +271,12 @@
         `/players/${encodeURIComponent(state.player.source)}/${encodeURIComponent(state.player.external_id)}`;
       const [stats, games] = await Promise.all([
         api(`${base}/stats?mode=combined&pace=${pace}`),
-        api(`${base}/games?mode=combined&pace=${pace}&page_size=250`),
+        api(`${base}/games?mode=combined&pace=${pace}&page_size=500`),
       ]);
       state.stats = stats;
       state.games = games.items;
       state.openingFilter = null;
+      state.decisionPath = [];
       renderAll();
     } catch (error) {
       toast(t("toast.paceError"), error.message, "error");
@@ -273,7 +288,7 @@
   function renderAll() {
     renderPlayer();
     renderMetrics();
-    renderOpenings();
+    renderRepertoire();
     renderColors();
     renderGames();
   }
@@ -348,6 +363,215 @@
     });
   }
 
+  function renderRepertoire() {
+    const decisionsVisible = state.repertoireView !== "openings";
+    state.repertoireView = decisionsVisible ? "decisions" : "openings";
+    $("#decision-map-view").hidden = !decisionsVisible;
+    $("#openings-table-view").hidden = decisionsVisible;
+    $("#repertoire-title").textContent = t(
+      decisionsVisible ? "repertoire.decisionMap" : "openings.title"
+    );
+    $$('[data-repertoire-view]').forEach((button) => {
+      const active = button.dataset.repertoireView === state.repertoireView;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    if (decisionsVisible) renderDecisionMap();
+    else renderOpenings();
+  }
+
+  function decisionMapForSelectedColor() {
+    const maps = state.stats?.opening_decisions || {};
+    let selected = maps[state.decisionColor];
+    if (!selected?.games) {
+      const fallback = state.decisionColor === "white" ? "black" : "white";
+      if (maps[fallback]?.games) {
+        state.decisionColor = fallback;
+        state.decisionPath = [];
+        selected = maps[fallback];
+      }
+    }
+    return selected || {
+      games: 0,
+      game_ids: [],
+      classified_games: 0,
+      roots: [],
+      nodes: {},
+    };
+  }
+
+  function compactOpeningName(opening, parentOpening = "") {
+    if (parentOpening && opening.startsWith(`${parentOpening}: `)) {
+      return opening.slice(parentOpening.length + 2);
+    }
+    return opening;
+  }
+
+  function syncDecisionColorControls() {
+    $$('[data-decision-color]').forEach((button) => {
+      const active = button.dataset.decisionColor === state.decisionColor;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+  }
+
+  function validDecisionPath(map) {
+    const validPath = [];
+    for (const nodeId of state.decisionPath || []) {
+      if (!map.nodes?.[nodeId] || validPath.includes(nodeId)) break;
+      validPath.push(nodeId);
+    }
+    return validPath;
+  }
+
+  function renderDecisionCoverage(map) {
+    const coverage = map.games ? Math.round(map.classified_games / map.games * 100) : 0;
+    $("#decision-coverage").textContent = t("repertoire.coverage", {
+      classified: map.classified_games,
+      games: map.games,
+      coverage,
+    });
+  }
+
+  function decisionBreadcrumbLabel(map, path, index) {
+    const node = map.nodes[path[index]];
+    const parent = index ? map.nodes[path[index - 1]] : null;
+    const move = node.moves?.[0]?.move || "";
+    return parent?.opening === node.opening && move ?
+      move : compactOpeningName(node.opening, parent?.opening || "");
+  }
+
+  function renderDecisionBreadcrumbs(map, path) {
+    const rootLabel = t(
+      state.decisionColor === "white" ? "metrics.white" : "metrics.black"
+    );
+    $("#decision-breadcrumbs").innerHTML = [
+      `<button type="button" data-decision-depth="0">${escapeHtml(rootLabel)}</button>`,
+      ...path.map((_nodeId, index) =>
+        `<span aria-hidden="true">›</span><button type="button" data-decision-depth="${index + 1}">${escapeHtml(decisionBreadcrumbLabel(map, path, index))}</button>`
+      ),
+    ].join("");
+    $$('[data-decision-depth]').forEach((button) => {
+      button.addEventListener("click", () => {
+        state.decisionPath = path.slice(0, Number(button.dataset.decisionDepth));
+        renderDecisionMap();
+      });
+    });
+  }
+
+  function renderCurrentDecision(map, current) {
+    const currentRecord = current || map;
+    const currentActor = current?.actor || (state.decisionColor === "white" ? "player" : "opponent");
+    const currentMoves = current?.moves?.map((item) => item.move).join(" / ") || "";
+    const currentTitle = current?.opening || t(
+      state.decisionColor === "white" ? "repertoire.whiteStart" : "repertoire.blackStart"
+    );
+    const currentMeta = current ?
+      [current.eco, currentMoves && t("repertoire.reachedWith", { move: currentMoves })].filter(Boolean).join(" · ") :
+      t("repertoire.rootHelp");
+    const transposition = current?.transposition_routes > 1 ?
+      `<span class="decision-transposition">↔ ${escapeHtml(t("repertoire.transpositions", { count: current.transposition_routes }))}</span>` : "";
+    $("#decision-current").innerHTML = `
+      <div class="decision-current-copy">
+        <span class="actor-pill ${currentActor}">${escapeHtml(t(currentActor === "player" ? "repertoire.you" : "repertoire.opponent"))}</span>
+        <div><h4>${escapeHtml(currentTitle)}</h4><p>${escapeHtml(currentMeta)}</p>${transposition}</div>
+      </div>
+      <div class="decision-current-stats">
+        <span><strong>${currentRecord.games}</strong>${escapeHtml(countLabel(currentRecord.games))}</span>
+        <span><strong>${formatNumber(currentRecord.score_pct)}%</strong>${escapeHtml(t("openings.score"))}</span>
+        <button type="button" id="decision-current-games">${escapeHtml(t("repertoire.viewGames"))}</button>
+      </div>`;
+    $("#decision-current-games").addEventListener("click", () => selectDecisionGames({
+      game_ids: currentRecord.game_ids,
+      games: currentRecord.games,
+      opening: currentTitle,
+      color: state.decisionColor,
+    }));
+  }
+
+  function decisionChoiceDetails(map, current, edge, path) {
+    const node = map.nodes[edge.node_id];
+    const move = edge.moves?.[0]?.move || node.moves?.[0]?.move || "";
+    const repeatedName = current?.opening === node.opening && Boolean(move);
+    return {
+      node,
+      move,
+      title: repeatedName ? move : compactOpeningName(node.opening, current?.opening || ""),
+      meta: repeatedName ?
+        [node.opening, node.eco].filter(Boolean).join(" · ") :
+        [move, node.eco].filter(Boolean).join(" · "),
+      hasChildren: node.children?.some((child) => !path.includes(child.node_id)),
+      filterLabel: repeatedName ?
+        `${move} · ${node.opening}` : compactOpeningName(node.opening, current?.opening || ""),
+    };
+  }
+
+  function renderDecisionChoices(map, current, children, path) {
+    if (!children.length) {
+      $("#decision-choices").innerHTML = `<div class="decision-end"><span>✓</span><div><strong>${escapeHtml(t("repertoire.endTitle"))}</strong><p>${escapeHtml(t("repertoire.endText"))}</p></div></div>`;
+      return;
+    }
+
+    const actors = new Set(children.map((edge) => map.nodes[edge.node_id]?.actor));
+    const choicesTitle = actors.size === 1 ?
+      t(actors.has("player") ? "repertoire.yourChoices" : "repertoire.opponentChoices") :
+      t("repertoire.nextChoices");
+    $("#decision-choices").innerHTML = `
+      <div class="decision-choices-heading"><strong>${escapeHtml(choicesTitle)}</strong><span>${escapeHtml(t("repertoire.contextShare"))}</span></div>
+      ${children.map((edge, index) => {
+        const choice = decisionChoiceDetails(map, current, edge, path);
+        return `<article class="decision-choice">
+          <button class="decision-choice-main" type="button" data-decision-index="${index}" aria-label="${escapeHtml(t("repertoire.continueAria", { opening: choice.title }))}">
+            <span class="actor-marker ${choice.node.actor}">${escapeHtml(t(choice.node.actor === "player" ? "repertoire.you" : "repertoire.opponent"))}</span>
+            <span class="decision-choice-copy"><strong>${escapeHtml(choice.title)}</strong><small>${escapeHtml(choice.meta)}</small></span>
+            <span class="decision-choice-numbers"><strong>${formatNumber(edge.share_pct)}%</strong><small>${edge.games} ${escapeHtml(countLabel(edge.games))} · ${formatNumber(edge.score_pct)}% ${escapeHtml(t("openings.score").toLocaleLowerCase(currentLocale()))}</small></span>
+            <span class="decision-chevron" aria-hidden="true">${choice.hasChildren ? "→" : "·"}</span>
+            <i class="decision-share-bar" style="width:${Math.min(100, edge.share_pct)}%"></i>
+          </button>
+          <button class="decision-choice-games" type="button" data-decision-games-index="${index}">${escapeHtml(t("repertoire.viewGames"))}</button>
+        </article>`;
+      }).join("")}`;
+    $$('[data-decision-index]').forEach((button) => {
+      button.addEventListener("click", () => {
+        const edge = children[Number(button.dataset.decisionIndex)];
+        state.decisionPath = [...path, edge.node_id];
+        renderDecisionMap();
+      });
+    });
+    $$('[data-decision-games-index]').forEach((button) => {
+      button.addEventListener("click", () => {
+        const edge = children[Number(button.dataset.decisionGamesIndex)];
+        const choice = decisionChoiceDetails(map, current, edge, path);
+        selectDecisionGames({
+          game_ids: edge.game_ids,
+          games: edge.games,
+          opening: choice.filterLabel,
+          color: state.decisionColor,
+        });
+      });
+    });
+  }
+
+  function renderDecisionMap() {
+    const map = decisionMapForSelectedColor();
+    const path = validDecisionPath(map);
+    state.decisionPath = path;
+    const current = path.length ? map.nodes[path.at(-1)] : null;
+    const children = (current ? current.children : map.roots)
+      .filter((edge) => !path.includes(edge.node_id));
+
+    syncDecisionColorControls();
+    renderDecisionCoverage(map);
+    renderDecisionBreadcrumbs(map, path);
+    if (!map.games) {
+      $("#decision-current").innerHTML = `<div class="decision-empty"><strong>${escapeHtml(t("repertoire.emptyTitle"))}</strong><span>${escapeHtml(t("repertoire.emptyText"))}</span></div>`;
+      $("#decision-choices").innerHTML = "";
+      return;
+    }
+    renderCurrentDecision(map, current);
+    renderDecisionChoices(map, current, children, path);
+  }
+
   function renderColors() {
     $("#color-breakdown").innerHTML = state.stats.by_color.map((row) => `
     <div class="color-row">
@@ -367,14 +591,15 @@
     const color = $("#filter-color").value;
     const result = $("#filter-result").value;
     const openingFilter = state.openingFilter;
+    const decisionGameIds = openingFilter?.game_ids ? new Set(openingFilter.game_ids) : null;
     return state.games.filter((game) => {
       const haystack = `${game.white} ${game.black} ${game.event || ""} ${game.opening} ${game.eco || ""}`
         .toLocaleLowerCase();
-      const matchesOpening = !openingFilter || (
+      const matchesOpening = !openingFilter || (decisionGameIds ?
+        decisionGameIds.has(game.id) :
         game.eco === openingFilter.eco &&
-        game.opening === openingFilter.opening &&
-        game.player_color === openingFilter.color
-      );
+          game.opening === openingFilter.opening &&
+          game.player_color === openingFilter.color);
       return (!text || haystack.includes(text)) &&
         (color === "all" || game.player_color === color) &&
         (result === "all" || outcome(game) === result) &&
@@ -413,12 +638,18 @@
     const active = $("#active-filter");
     active.hidden = !state.openingFilter;
     if (state.openingFilter) {
-      const filterLabel = `${state.openingFilter.eco || t("game.noEco")} · ${state.openingFilter.opening}`;
-      active.innerHTML = t("dynamic.activeOpening", {
-        opening: escapeHtml(filterLabel),
-        removeAria: t("dynamic.removeOpening"),
-        remove: t("pgn.remove")
-      });
+      const filterLabel = state.openingFilter.game_ids ?
+        state.openingFilter.opening :
+        `${state.openingFilter.eco || t("game.noEco")} · ${state.openingFilter.opening}`;
+      active.innerHTML = t(
+        state.openingFilter.game_ids ? "dynamic.activeDecision" : "dynamic.activeOpening",
+        {
+          opening: escapeHtml(filterLabel),
+          decision: escapeHtml(filterLabel),
+          removeAria: t("dynamic.removeOpening"),
+          remove: t("pgn.remove")
+        }
+      );
     }
     active.querySelector("button")?.addEventListener("click", () => {
       state.openingFilter = null;
@@ -441,6 +672,23 @@
     toast(t("toast.filterApplied"), t("toast.showingOpening", {
       count: opening.games,
       opening: ecoLabel
+    }));
+  }
+
+  function selectDecisionGames(decision) {
+    state.openingFilter = {
+      game_ids: decision.game_ids || [],
+      opening: decision.opening,
+      color: decision.color,
+    };
+    renderGames();
+    $("#partidas").scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+    toast(t("toast.filterApplied"), t("toast.showingDecision", {
+      count: decision.games,
+      decision: decision.opening,
     }));
   }
 

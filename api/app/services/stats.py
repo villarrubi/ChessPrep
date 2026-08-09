@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Iterable
 
 from api.app.models import Mode, NormalizedGame, Pace
+from api.app.services.pgn import OpeningStep, opening_path
 
 
 def outcome_for_player(game: NormalizedGame) -> str:
@@ -63,6 +64,101 @@ def _record(games: list[NormalizedGame]) -> dict:
         "win_pct": round(wins / decided * 100, 1) if decided else 0,
         "draw_pct": round(draws / decided * 100, 1) if decided else 0,
         "loss_pct": round(losses / decided * 100, 1) if decided else 0,
+    }
+
+
+def _most_common_moves(moves: Counter[str]) -> list[dict[str, object]]:
+    return [
+        {"move": move, "games": games}
+        for move, games in sorted(moves.items(), key=lambda item: (-item[1], item[0]))[:3]
+    ]
+
+
+def _opening_decision_map(games: list[NormalizedGame], color: str) -> dict[str, object]:
+    color_games = [game for game in games if game.player_color == color]
+    games_by_id = {game.id: game for game in color_games}
+    node_steps: dict[str, OpeningStep] = {}
+    node_game_ids: dict[str, set[str]] = defaultdict(set)
+    node_moves: dict[str, Counter[str]] = defaultdict(Counter)
+    node_parents: dict[str, set[str]] = defaultdict(set)
+    edge_game_ids: dict[tuple[str, str], set[str]] = defaultdict(set)
+    edge_moves: dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
+    root_id = "__root__"
+
+    for game in color_games:
+        previous = root_id
+        seen_positions: set[str] = set()
+        for step in opening_path(game.moves_uci):
+            if step.position_id in seen_positions:
+                break
+            seen_positions.add(step.position_id)
+            move = game.moves[step.ply - 1] if step.ply <= len(game.moves) else ""
+            node_steps.setdefault(step.position_id, step)
+            node_game_ids[step.position_id].add(game.id)
+            if move:
+                node_moves[step.position_id][move] += 1
+
+            edge = (previous, step.position_id)
+            edge_game_ids[edge].add(game.id)
+            if move:
+                edge_moves[edge][move] += 1
+            node_parents[step.position_id].add(previous)
+            previous = step.position_id
+
+    def edge_payload(source_id: str, target_id: str) -> dict[str, object]:
+        ids = edge_game_ids[(source_id, target_id)]
+        edge_games = [games_by_id[game_id] for game_id in ids]
+        parent_total = (
+            len(color_games) if source_id == root_id else len(node_game_ids[source_id])
+        )
+        return {
+            "node_id": target_id,
+            **_record(edge_games),
+            "share_pct": round(len(ids) / parent_total * 100, 1) if parent_total else 0,
+            "game_ids": sorted(ids),
+            "moves": _most_common_moves(edge_moves[(source_id, target_id)]),
+        }
+
+    children_by_source: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for source_id, target_id in edge_game_ids:
+        children_by_source[source_id].append(edge_payload(source_id, target_id))
+
+    def sort_edges(edges: list[dict[str, object]]) -> list[dict[str, object]]:
+        return sorted(
+            edges,
+            key=lambda edge: (
+                -int(edge["games"]),
+                node_steps[str(edge["node_id"])].name,
+            ),
+        )
+
+    nodes: dict[str, dict[str, object]] = {}
+    for position_id, step in node_steps.items():
+        ids = node_game_ids[position_id]
+        node_games = [games_by_id[game_id] for game_id in ids]
+        mover_color = "white" if step.ply % 2 else "black"
+        nodes[position_id] = {
+            "id": position_id,
+            "eco": step.eco,
+            "opening": step.name,
+            "actor": "player" if mover_color == color else "opponent",
+            "ply": step.ply,
+            **_record(node_games),
+            "game_ids": sorted(ids),
+            "moves": _most_common_moves(node_moves[position_id]),
+            "transposition_routes": len(node_parents[position_id]),
+            "children": sort_edges(children_by_source[position_id]),
+        }
+
+    classified_ids = set().union(*(node_game_ids.values())) if node_game_ids else set()
+    return {
+        "color": color,
+        **_record(color_games),
+        "game_ids": sorted(games_by_id),
+        "classified_games": len(classified_ids),
+        "unclassified_games": len(color_games) - len(classified_ids),
+        "roots": sort_edges(children_by_source[root_id]),
+        "nodes": nodes,
     }
 
 
@@ -134,5 +230,8 @@ def calculate_stats(
         "overall": overall,
         "by_color": colors,
         "openings": openings,
+        "opening_decisions": {
+            color: _opening_decision_map(selected, color) for color in ("white", "black")
+        },
         "recent_form": form,
     }
