@@ -65,7 +65,7 @@ Lichess se consulta solo con sus modalidades estándar (`ultraBullet`, `bullet`,
 
 Cuando un PGN no aporta `Opening` o `ECO`, ChessPrep recorre sus jugadas y busca la posición más profunda en una base local de 3.810 posiciones ECO. La coincidencia se hace por EPD, no por la secuencia literal, por lo que reconoce transposiciones; si la partida se desvía por una línea secundaria conserva la última apertura conocida. Solo permanece sin clasificar cuando ni las cabeceras ni las posiciones permiten identificarla.
 
-El panel **Repertorio** ofrece dos vistas. **Decisiones** recorre las posiciones conocidas como un mapa: cada rama indica si la jugada que la introdujo fue del jugador o del rival, calcula su porcentaje dentro de la posición anterior y permite abrir exactamente las partidas de esa rama. Las posiciones idénticas alcanzadas por órdenes distintos se unifican. **Aperturas** conserva el resumen tradicional por ECO, nombre y color y su filtro exacto de partidas.
+El panel **Repertorio** ofrece dos vistas. **Decisiones** recorre la apertura movimiento a movimiento: la jugada es el título principal, cada nivel pertenece únicamente al jugador o al rival y su frecuencia se calcula dentro de la posición anterior. Las partidas que no alcanzan otra posición conocida aparecen como **Otras continuaciones**, por lo que las ramas visibles explican el 100% del nodo. Cada grupo abre sus partidas exactas, las posiciones idénticas alcanzadas por órdenes distintos se unifican y el botón **Volver a la decisión anterior** permite revisar otra rama sin reiniciar el recorrido. **Aperturas** conserva el resumen tradicional por ECO, nombre y color y su filtro exacto de partidas.
 
 ### Resultados OTB de Info64
 
@@ -116,7 +116,7 @@ docker compose up --build
 - Web: [http://localhost:3000](http://localhost:3000)
 - API: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
 
-Los dos Dockerfiles y `docker-compose.yml` están preparados para la arquitectura modular actual. El contenedor de API copia también `web/js` y `web/vendor`, de modo que puede servir la SPA completa; el contenedor web sirve esos mismos recursos mediante Nginx y redirige `/api` a FastAPI.
+Los dos Dockerfiles y `docker-compose.yml` están preparados para la arquitectura modular actual. El contenedor de API copia la carpeta `web` completa, de modo que puede servir toda la SPA; el contenedor web publica esos mismos recursos mediante Nginx y redirige `/api` a FastAPI.
 
 > **Verificación pendiente:** la construcción y el arranque de las imágenes no se han ejecutado después de la refactorización. El 9 de agosto de 2026 se detectó el cliente de Docker, pero el motor de Docker Desktop no estaba en ejecución. Esto no afecta al arranque con `run.ps1`. Cuando el motor esté disponible se debe ejecutar el comando anterior y comprobar `/`, `/licenses.html`, el archivo fuente de Stockfish, `/api/v1/health`, la carga de una muestra y el visor.
 
@@ -132,7 +132,7 @@ Las pruebas comprueban que el ejemplo sintético no se precarga ni se confunde c
 
 A fecha de esta revisión, el estado es:
 
-- **69 pruebas automatizadas superadas**.
+- **71 pruebas automatizadas superadas**.
 - Todo el backend compila correctamente con `python -m compileall api`.
 - Los 13 scripts declarados por la interfaz y el service worker pasan validación sintáctica.
 - Todos los CSS y scripts referenciados por `index.html` se sirven con código HTTP 200 y las cabeceras de seguridad previstas.

@@ -1,5 +1,10 @@
 from api.app.models import GameType
-from api.app.services.pgn import _opening_position_index, opening_path, parse_pgn
+from api.app.services.pgn import (
+    _opening_position_index,
+    opening_move_path,
+    opening_path,
+    parse_pgn,
+)
 
 
 def _parse(moves: str, extra_headers: str = ""):
@@ -48,6 +53,16 @@ def test_move_order_transpositions_reach_the_same_opening():
     assert opening_path(transposition.moves_uci)[-1].position_id == opening_path(
         canonical.moves_uci
     )[-1].position_id
+
+
+def test_repertoire_path_keeps_every_move_until_the_deepest_opening():
+    game = _parse("1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. f3")
+    named_path = opening_path(game.moves_uci)
+    move_path = opening_move_path(game.moves_uci)
+
+    assert move_path[-1].ply == named_path[-1].ply
+    assert [step.ply for step in move_path] == list(range(1, move_path[-1].ply + 1))
+    assert move_path[-1].position_id == named_path[-1].position_id
 
 
 def test_unknown_header_is_replaced_but_specific_provider_name_is_preserved():

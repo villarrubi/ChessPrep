@@ -401,6 +401,7 @@
   }
 
   function compactOpeningName(opening, parentOpening = "") {
+    if (!opening) return "";
     if (parentOpening && opening.startsWith(`${parentOpening}: `)) {
       return opening.slice(parentOpening.length + 2);
     }
@@ -433,22 +434,46 @@
     });
   }
 
+  function edgeForDecisionPath(map, path, index) {
+    const edges = index ? map.nodes[path[index - 1]]?.children : map.roots;
+    return (edges || []).find((edge) => edge.node_id === path[index]) || null;
+  }
+
+  function moveForDecisionPath(map, path, index) {
+    const edge = edgeForDecisionPath(map, path, index);
+    const node = map.nodes[path[index]];
+    return edge?.moves?.[0]?.move || node?.moves?.[0]?.move || "";
+  }
+
   function decisionBreadcrumbLabel(map, path, index) {
     const node = map.nodes[path[index]];
     const parent = index ? map.nodes[path[index - 1]] : null;
-    const move = node.moves?.[0]?.move || "";
-    return parent?.opening === node.opening && move ?
-      move : compactOpeningName(node.opening, parent?.opening || "");
+    return moveForDecisionPath(map, path, index) ||
+      compactOpeningName(node.opening, parent?.opening || "") ||
+      t("repertoire.unnamedPosition");
   }
 
   function renderDecisionBreadcrumbs(map, path) {
     const rootLabel = t(
       state.decisionColor === "white" ? "metrics.white" : "metrics.black"
     );
+    const backButton = $("#decision-back");
+    const backLabel = t("repertoire.back");
+    backButton.disabled = path.length === 0;
+    backButton.title = backLabel;
+    backButton.setAttribute("aria-label", backLabel);
+    $("#decision-back-label").textContent = backLabel;
+    backButton.onclick = () => {
+      if (!path.length) return;
+      const previousPath = path.slice(0, -1);
+      state.decisionPath = previousPath;
+      renderDecisionMap();
+      (previousPath.length ? $("#decision-back") : $('[data-decision-depth="0"]'))?.focus();
+    };
     $("#decision-breadcrumbs").innerHTML = [
-      `<button type="button" data-decision-depth="0">${escapeHtml(rootLabel)}</button>`,
+      `<button type="button" data-decision-depth="0" ${path.length ? "" : 'aria-current="page"'}>${escapeHtml(rootLabel)}</button>`,
       ...path.map((_nodeId, index) =>
-        `<span aria-hidden="true">›</span><button type="button" data-decision-depth="${index + 1}">${escapeHtml(decisionBreadcrumbLabel(map, path, index))}</button>`
+        `<span aria-hidden="true">›</span><button type="button" data-decision-depth="${index + 1}" ${index === path.length - 1 ? 'aria-current="page"' : ""}>${escapeHtml(decisionBreadcrumbLabel(map, path, index))}</button>`
       ),
     ].join("");
     $$('[data-decision-depth]').forEach((button) => {
@@ -459,15 +484,16 @@
     });
   }
 
-  function renderCurrentDecision(map, current) {
+  function renderCurrentDecision(map, current, path) {
     const currentRecord = current || map;
     const currentActor = current?.actor || (state.decisionColor === "white" ? "player" : "opponent");
-    const currentMoves = current?.moves?.map((item) => item.move).join(" / ") || "";
-    const currentTitle = current?.opening || t(
+    const currentMove = current ? moveForDecisionPath(map, path, path.length - 1) : "";
+    const currentTitle = current ?
+      currentMove || current.opening || t("repertoire.unnamedPosition") : t(
       state.decisionColor === "white" ? "repertoire.whiteStart" : "repertoire.blackStart"
     );
     const currentMeta = current ?
-      [current.eco, currentMoves && t("repertoire.reachedWith", { move: currentMoves })].filter(Boolean).join(" · ") :
+      [current.opening !== currentTitle && current.opening, current.eco].filter(Boolean).join(" · ") :
       t("repertoire.rootHelp");
     const transposition = current?.transposition_routes > 1 ?
       `<span class="decision-transposition">↔ ${escapeHtml(t("repertoire.transpositions", { count: current.transposition_routes }))}</span>` : "";
@@ -484,7 +510,7 @@
     $("#decision-current-games").addEventListener("click", () => selectDecisionGames({
       game_ids: currentRecord.game_ids,
       games: currentRecord.games,
-      opening: currentTitle,
+      opening: [currentMove, current?.opening].filter(Boolean).join(" · ") || currentTitle,
       color: state.decisionColor,
     }));
   }
@@ -492,22 +518,22 @@
   function decisionChoiceDetails(map, current, edge, path) {
     const node = map.nodes[edge.node_id];
     const move = edge.moves?.[0]?.move || node.moves?.[0]?.move || "";
-    const repeatedName = current?.opening === node.opening && Boolean(move);
+    const opening = compactOpeningName(node.opening, current?.opening || "") ||
+      node.opening || t("repertoire.unnamedPosition");
     return {
       node,
       move,
-      title: repeatedName ? move : compactOpeningName(node.opening, current?.opening || ""),
-      meta: repeatedName ?
-        [node.opening, node.eco].filter(Boolean).join(" · ") :
-        [move, node.eco].filter(Boolean).join(" · "),
+      title: move || opening,
+      meta: [node.opening || opening, node.eco].filter(Boolean).join(" · "),
       hasChildren: node.children?.some((child) => !path.includes(child.node_id)),
-      filterLabel: repeatedName ?
-        `${move} · ${node.opening}` : compactOpeningName(node.opening, current?.opening || ""),
+      filterLabel: [move, node.opening || opening].filter(Boolean).join(" · "),
     };
   }
 
   function renderDecisionChoices(map, current, children, path) {
-    if (!children.length) {
+    const remainder = current?.other_continuations || map.unclassified_branch;
+    const showRemainder = Boolean(remainder?.games) && (children.length > 0 || !current);
+    if (!children.length && !showRemainder) {
       $("#decision-choices").innerHTML = `<div class="decision-end"><span>✓</span><div><strong>${escapeHtml(t("repertoire.endTitle"))}</strong><p>${escapeHtml(t("repertoire.endText"))}</p></div></div>`;
       return;
     }
@@ -524,13 +550,23 @@
           <button class="decision-choice-main" type="button" data-decision-index="${index}" aria-label="${escapeHtml(t("repertoire.continueAria", { opening: choice.title }))}">
             <span class="actor-marker ${choice.node.actor}">${escapeHtml(t(choice.node.actor === "player" ? "repertoire.you" : "repertoire.opponent"))}</span>
             <span class="decision-choice-copy"><strong>${escapeHtml(choice.title)}</strong><small>${escapeHtml(choice.meta)}</small></span>
-            <span class="decision-choice-numbers"><strong>${formatNumber(edge.share_pct)}%</strong><small>${edge.games} ${escapeHtml(countLabel(edge.games))} · ${formatNumber(edge.score_pct)}% ${escapeHtml(t("openings.score").toLocaleLowerCase(currentLocale()))}</small></span>
+            <span class="decision-choice-numbers"><strong>${formatNumber(edge.share_pct)}%</strong><small>${escapeHtml(t("repertoire.frequency"))} · ${edge.games} ${escapeHtml(countLabel(edge.games))}</small><small>${escapeHtml(t("openings.score"))} · ${formatNumber(edge.score_pct)}%</small></span>
             <span class="decision-chevron" aria-hidden="true">${choice.hasChildren ? "→" : "·"}</span>
             <i class="decision-share-bar" style="width:${Math.min(100, edge.share_pct)}%"></i>
           </button>
           <button class="decision-choice-games" type="button" data-decision-games-index="${index}">${escapeHtml(t("repertoire.viewGames"))}</button>
         </article>`;
-      }).join("")}`;
+      }).join("")}
+      ${showRemainder ? `<article class="decision-choice decision-choice-residual">
+        <div class="decision-choice-main decision-choice-static">
+          <span class="actor-marker neutral" aria-hidden="true">…</span>
+          <span class="decision-choice-copy"><strong>${escapeHtml(t(current ? "repertoire.otherContinuations" : "repertoire.unclassifiedGames"))}</strong><small>${escapeHtml(t("repertoire.otherContinuationsMeta"))}</small></span>
+          <span class="decision-choice-numbers"><strong>${formatNumber(remainder.share_pct)}%</strong><small>${escapeHtml(t("repertoire.frequency"))} · ${remainder.games} ${escapeHtml(countLabel(remainder.games))}</small><small>${escapeHtml(t("openings.score"))} · ${formatNumber(remainder.score_pct)}%</small></span>
+          <span class="decision-chevron" aria-hidden="true">·</span>
+          <i class="decision-share-bar neutral" style="width:${Math.min(100, remainder.share_pct)}%"></i>
+        </div>
+        <button class="decision-choice-games" type="button" id="decision-other-games">${escapeHtml(t("repertoire.viewGames"))}</button>
+      </article>` : ""}`;
     $$('[data-decision-index]').forEach((button) => {
       button.addEventListener("click", () => {
         const edge = children[Number(button.dataset.decisionIndex)];
@@ -550,6 +586,12 @@
         });
       });
     });
+    $("#decision-other-games")?.addEventListener("click", () => selectDecisionGames({
+      game_ids: remainder.game_ids,
+      games: remainder.games,
+      opening: t(current ? "repertoire.otherContinuations" : "repertoire.unclassifiedGames"),
+      color: state.decisionColor,
+    }));
   }
 
   function renderDecisionMap() {
@@ -568,7 +610,7 @@
       $("#decision-choices").innerHTML = "";
       return;
     }
-    renderCurrentDecision(map, current);
+    renderCurrentDecision(map, current, path);
     renderDecisionChoices(map, current, children, path);
   }
 

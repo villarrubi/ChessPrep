@@ -131,7 +131,7 @@ def test_loader_cycles_all_pieces_without_disabling_its_timer():
     index = client.get("/").text
     script = client.get("/app.js").text
 
-    assert "/app.js?v=20260809-repertoire-map" in index
+    assert "/app.js?v=20260809-repertoire-moves" in index
     assert 'const LOADER_PIECES = ["♙", "♘", "♗", "♖", "♕", "♔"];' in script
     assert "const LOADER_INTERVAL_MS = 450;" in script
     assert "window.setInterval(advanceLoaderPiece, LOADER_INTERVAL_MS)" in script
@@ -147,7 +147,7 @@ def test_language_switcher_and_elo_calculator_are_available():
     assert 'id="language-button"' in index
     assert 'id="language-menu"' in index
     assert index.count('data-language="') == 5
-    assert "/i18n.js?v=20260809-repertoire-map" in index
+    assert "/i18n.js?v=20260809-repertoire-moves" in index
     assert 'const STORAGE_KEY = "chessprep_language";' in translations
     assert '{ code: "es"' in translations
     assert '{ code: "en"' in translations
@@ -386,14 +386,22 @@ def test_repertoire_map_distinguishes_player_and_opponent_decisions():
     assert 'data-repertoire-view="decisions"' in index
     assert 'data-repertoire-view="openings"' in index
     assert 'data-decision-color="white"' in index
+    assert 'id="decision-back"' in index
     assert 'id="decision-breadcrumbs"' in index
     assert 'id="decision-choices"' in index
     assert "function renderDecisionMap()" in script
+    assert "const previousPath = path.slice(0, -1);" in script
+    assert "title: move || opening" in script
+    assert "const remainder = current?.other_continuations || map.unclassified_branch;" in script
     assert 'node.actor === "player"' in script
     assert "function selectDecisionGames(decision)" in script
     assert '"repertoire.you": "Tú"' in translations
     assert '"repertoire.opponent": "Rival"' in translations
+    assert '"repertoire.back": "Volver a la decisión anterior"' in translations
+    assert '"repertoire.otherContinuations": "Otras continuaciones"' in translations
+    assert '"repertoire.frequency": "Frecuencia"' in translations
     assert ".decision-choice-main" in styles
+    assert ".decision-back:focus-visible" in styles
     assert ".actor-marker.player" in styles
     assert ".actor-marker.opponent" in styles
 

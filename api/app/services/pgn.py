@@ -104,6 +104,14 @@ class OpeningStep:
     ply: int
 
 
+@dataclass(frozen=True)
+class OpeningMoveStep:
+    position_id: str
+    eco: str | None
+    name: str | None
+    ply: int
+
+
 @lru_cache(maxsize=1)
 def _opening_position_index() -> dict[str, OpeningMatch]:
     """Load the local ECO database, indexed by position rather than move order."""
@@ -156,6 +164,42 @@ def opening_path(moves_uci: list[str]) -> list[OpeningStep]:
             )
         )
     return path
+
+
+def opening_move_path(moves_uci: list[str]) -> list[OpeningMoveStep]:
+    """Return every consecutive move through the deepest known opening.
+
+    The repertoire graph must not jump directly between named positions: doing
+    so can skip one or more turns and mix player and opponent choices at the
+    same level. Unnamed intermediate positions therefore remain in the path,
+    while the last database match defines where opening analysis stops.
+    """
+    index = _opening_position_index()
+    if not index:
+        return []
+
+    board = chess.Board()
+    positions: list[OpeningMoveStep] = []
+    deepest_match = -1
+    for ply, uci in enumerate(moves_uci, start=1):
+        try:
+            board.push_uci(uci)
+        except (ValueError, AssertionError):
+            break
+        epd = board.epd()
+        candidate = index.get(epd)
+        positions.append(
+            OpeningMoveStep(
+                position_id=hashlib.sha256(epd.encode("utf-8")).hexdigest()[:16],
+                eco=candidate.eco if candidate else None,
+                name=candidate.name if candidate else None,
+                ply=ply,
+            )
+        )
+        if candidate is not None:
+            deepest_match = len(positions) - 1
+
+    return positions[: deepest_match + 1] if deepest_match >= 0 else []
 
 
 def _classify_opening(moves_uci: list[str]) -> OpeningMatch | None:

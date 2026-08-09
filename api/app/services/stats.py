@@ -4,7 +4,7 @@ from collections import Counter, defaultdict
 from typing import Iterable
 
 from api.app.models import Mode, NormalizedGame, Pace
-from api.app.services.pgn import OpeningStep, opening_path
+from api.app.services.pgn import OpeningMoveStep, opening_move_path
 
 
 def outcome_for_player(game: NormalizedGame) -> str:
@@ -77,7 +77,7 @@ def _most_common_moves(moves: Counter[str]) -> list[dict[str, object]]:
 def _opening_decision_map(games: list[NormalizedGame], color: str) -> dict[str, object]:
     color_games = [game for game in games if game.player_color == color]
     games_by_id = {game.id: game for game in color_games}
-    node_steps: dict[str, OpeningStep] = {}
+    node_steps: dict[str, OpeningMoveStep] = {}
     node_game_ids: dict[str, set[str]] = defaultdict(set)
     node_moves: dict[str, Counter[str]] = defaultdict(Counter)
     node_parents: dict[str, set[str]] = defaultdict(set)
@@ -88,7 +88,7 @@ def _opening_decision_map(games: list[NormalizedGame], color: str) -> dict[str, 
     for game in color_games:
         previous = root_id
         seen_positions: set[str] = set()
-        for step in opening_path(game.moves_uci):
+        for step in opening_move_path(game.moves_uci):
             if step.position_id in seen_positions:
                 break
             seen_positions.add(step.position_id)
@@ -119,6 +119,14 @@ def _opening_decision_map(games: list[NormalizedGame], color: str) -> dict[str, 
             "moves": _most_common_moves(edge_moves[(source_id, target_id)]),
         }
 
+    def remainder_payload(ids: set[str], parent_total: int) -> dict[str, object]:
+        remainder_games = [games_by_id[game_id] for game_id in ids]
+        return {
+            **_record(remainder_games),
+            "share_pct": round(len(ids) / parent_total * 100, 1) if parent_total else 0,
+            "game_ids": sorted(ids),
+        }
+
     children_by_source: dict[str, list[dict[str, object]]] = defaultdict(list)
     for source_id, target_id in edge_game_ids:
         children_by_source[source_id].append(edge_payload(source_id, target_id))
@@ -128,7 +136,7 @@ def _opening_decision_map(games: list[NormalizedGame], color: str) -> dict[str, 
             edges,
             key=lambda edge: (
                 -int(edge["games"]),
-                node_steps[str(edge["node_id"])].name,
+                node_steps[str(edge["node_id"])].name or str(edge["node_id"]),
             ),
         )
 
@@ -136,6 +144,12 @@ def _opening_decision_map(games: list[NormalizedGame], color: str) -> dict[str, 
     for position_id, step in node_steps.items():
         ids = node_game_ids[position_id]
         node_games = [games_by_id[game_id] for game_id in ids]
+        children = sort_edges(children_by_source[position_id])
+        continued_ids = {
+            game_id
+            for edge in children
+            for game_id in edge["game_ids"]
+        }
         mover_color = "white" if step.ply % 2 else "black"
         nodes[position_id] = {
             "id": position_id,
@@ -147,16 +161,19 @@ def _opening_decision_map(games: list[NormalizedGame], color: str) -> dict[str, 
             "game_ids": sorted(ids),
             "moves": _most_common_moves(node_moves[position_id]),
             "transposition_routes": len(node_parents[position_id]),
-            "children": sort_edges(children_by_source[position_id]),
+            "children": children,
+            "other_continuations": remainder_payload(ids - continued_ids, len(ids)),
         }
 
     classified_ids = set().union(*(node_game_ids.values())) if node_game_ids else set()
+    unclassified_ids = set(games_by_id) - classified_ids
     return {
         "color": color,
         **_record(color_games),
         "game_ids": sorted(games_by_id),
         "classified_games": len(classified_ids),
         "unclassified_games": len(color_games) - len(classified_ids),
+        "unclassified_branch": remainder_payload(unclassified_ids, len(color_games)),
         "roots": sort_edges(children_by_source[root_id]),
         "nodes": nodes,
     }
