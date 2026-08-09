@@ -1,4 +1,4 @@
-const CACHE_NAME = "chessprep-v20260809-online-sample";
+const CACHE_NAME = "chessprep-v20260809-ui-controls";
 const STATIC_ASSETS = [
   "/",
   "/index.html",

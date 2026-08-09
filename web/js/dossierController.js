@@ -89,7 +89,7 @@
       $$("[data-opening-color]").forEach((button) => {
         button.addEventListener("click", () => {
           state.openingColor = button.dataset.openingColor;
-          $$("[data-opening-color]").forEach((item) => item.classList.toggle("active", item === button));
+          syncOpeningColorControls();
           renderOpenings();
         });
       });
@@ -343,6 +343,7 @@
   }
 
   function renderOpenings() {
+    syncOpeningColorControls();
     const rows = state.stats.openings.filter((item) => state.openingColor === "all" || item.color === state
       .openingColor);
     const visibleRows = rows.slice(0, 8);
@@ -413,6 +414,14 @@
   function syncDecisionColorControls() {
     $$('[data-decision-color]').forEach((button) => {
       const active = button.dataset.decisionColor === state.decisionColor;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+  }
+
+  function syncOpeningColorControls() {
+    $$("[data-opening-color]").forEach((button) => {
+      const active = button.dataset.openingColor === state.openingColor;
       button.classList.toggle("active", active);
       button.setAttribute("aria-pressed", String(active));
     });

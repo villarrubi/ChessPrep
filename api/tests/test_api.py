@@ -208,7 +208,7 @@ def test_language_switcher_and_elo_calculator_are_available():
     assert 'id="language-button"' in index
     assert 'id="language-menu"' in index
     assert index.count('data-language="') == 5
-    assert "/i18n.js?v=20260809-online-sample" in index
+    assert "/i18n.js?v=20260809-ui-controls" in index
     assert 'const STORAGE_KEY = "chessprep_language";' in translations
     assert '{ code: "es"' in translations
     assert '{ code: "en"' in translations
@@ -292,6 +292,8 @@ def test_header_is_clean_and_online_otb_searches_have_equal_modes():
     assert 'data-search-mode="online"' in index
     assert 'data-search-mode="otb"' in index
     assert 'id="hero-otb-search" role="search" novalidate' in index
+    assert index.count('class="button button-primary hero-player-search"') == 2
+    assert index.count('Buscar jugador <span>→</span>') == 2
     assert 'id="hero-fide-id"' in index
     assert 'pattern="[0-9]{5,10}"' not in index
     assert 'id="importar-pgn"' in index
@@ -305,6 +307,7 @@ def test_game_viewer_owns_its_fen_parser_and_loading_dependency():
     app_script = client.get("/app.js").text
     viewer_script = client.get("/js/gameViewerController.js").text
     dossier_script = client.get("/js/dossierController.js").text
+    styles = client.get("/styles.css").text
 
     assert "function parseFen(fen)" in viewer_script
     assert "function parseFen(fen)" not in dossier_script
@@ -312,6 +315,8 @@ def test_game_viewer_owns_its_fen_parser_and_loading_dependency():
     viewer_start = app_script.index("viewerController = new GameViewerController({")
     viewer_end = app_script.index("dossierController = new DossierController({")
     assert "setLoading," in app_script[viewer_start:viewer_end]
+    assert ".viewer-close::before, .viewer-close::after" in styles
+    assert "translate(-50%, -50%) rotate(45deg)" in styles
 
 
 def test_manual_moves_are_draggable_and_use_an_independent_engine():
@@ -447,6 +452,8 @@ def test_repertoire_map_distinguishes_player_and_opponent_decisions():
     assert 'data-repertoire-view="decisions"' in index
     assert 'data-repertoire-view="openings"' in index
     assert 'data-decision-color="white"' in index
+    assert 'aria-pressed="true" data-decision-color="white"' in index
+    assert 'aria-pressed="true" data-opening-color="all"' in index
     assert 'id="decision-back"' in index
     assert 'id="decision-breadcrumbs"' in index
     assert 'id="decision-choices"' in index
@@ -455,6 +462,9 @@ def test_repertoire_map_distinguishes_player_and_opponent_decisions():
     assert "title: move || opening" in script
     assert "const remainder = current?.other_continuations || map.unclassified_branch;" in script
     assert 'node.actor === "player"' in script
+    assert "function syncOpeningColorControls()" in script
+    assert '.color-filter button::before' in styles
+    assert '.repertoire-view-switch button.active' in styles
     assert "function selectDecisionGames(decision)" in script
     assert '"repertoire.you": "Tú"' in translations
     assert '"repertoire.opponent": "Rival"' in translations
