@@ -136,3 +136,28 @@ def test_decision_map_exposes_games_without_a_further_classified_move():
     assert remainder["share_pct"] == 50.0
     assert remainder["game_ids"] == [short_game.id]
     assert bc4_edge["share_pct"] + remainder["share_pct"] == 100.0
+
+
+def test_decision_map_groups_a_shared_move_before_one_game_leaves_the_database():
+    main_line = _repertoire_game(
+        "1. d4 d5 2. c4 c6 3. Nc3 Nf6 4. Nf3",
+        "Black",
+    )
+    side_line = _repertoire_game(
+        "1. d4 d5 2. c4 c6 3. Nc3 Nf6 4. Qc2",
+        "Black",
+    ).model_copy(update={"id": "slav-side-line"})
+    decision_map = calculate_stats([main_line, side_line])["opening_decisions"]["black"]
+
+    _, d4 = _decision_child(decision_map, None, "d4")
+    _, d5 = _decision_child(decision_map, d4, "d5")
+    _, c4 = _decision_child(decision_map, d5, "c4")
+    _, c6 = _decision_child(decision_map, c4, "c6")
+    _, nc3 = _decision_child(decision_map, c6, "Nc3")
+    nf6_edge, nf6 = _decision_child(decision_map, nc3, "Nf6")
+
+    assert nf6_edge["games"] == 2
+    assert nf6_edge["share_pct"] == 100.0
+    assert nf6_edge["game_ids"] == sorted([main_line.id, side_line.id])
+    assert nc3["other_continuations"]["games"] == 0
+    assert nf6["other_continuations"]["game_ids"] == [side_line.id]

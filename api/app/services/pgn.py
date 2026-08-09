@@ -166,21 +166,14 @@ def opening_path(moves_uci: list[str]) -> list[OpeningStep]:
     return path
 
 
-def opening_move_path(moves_uci: list[str]) -> list[OpeningMoveStep]:
-    """Return every consecutive move through the deepest known opening.
-
-    The repertoire graph must not jump directly between named positions: doing
-    so can skip one or more turns and mix player and opponent choices at the
-    same level. Unnamed intermediate positions therefore remain in the path,
-    while the last database match defines where opening analysis stops.
-    """
+def opening_move_sequence(moves_uci: list[str]) -> list[OpeningMoveStep]:
+    """Return every legal main-line move and its opening metadata, if known."""
     index = _opening_position_index()
     if not index:
         return []
 
     board = chess.Board()
     positions: list[OpeningMoveStep] = []
-    deepest_match = -1
     for ply, uci in enumerate(moves_uci, start=1):
         try:
             board.push_uci(uci)
@@ -196,8 +189,23 @@ def opening_move_path(moves_uci: list[str]) -> list[OpeningMoveStep]:
                 ply=ply,
             )
         )
-        if candidate is not None:
-            deepest_match = len(positions) - 1
+
+    return positions
+
+
+def opening_move_path(moves_uci: list[str]) -> list[OpeningMoveStep]:
+    """Return every consecutive move through the deepest known opening.
+
+    The repertoire graph must not jump directly between named positions: doing
+    so can skip one or more turns and mix player and opponent choices at the
+    same level. Unnamed intermediate positions therefore remain in the path,
+    while the last database match defines where opening analysis stops.
+    """
+    positions = opening_move_sequence(moves_uci)
+    deepest_match = max(
+        (index for index, step in enumerate(positions) if step.name is not None),
+        default=-1,
+    )
 
     return positions[: deepest_match + 1] if deepest_match >= 0 else []
 

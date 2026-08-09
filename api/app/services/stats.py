@@ -4,7 +4,11 @@ from collections import Counter, defaultdict
 from typing import Iterable
 
 from api.app.models import Mode, NormalizedGame, Pace
-from api.app.services.pgn import OpeningMoveStep, opening_move_path
+from api.app.services.pgn import (
+    OpeningMoveStep,
+    opening_move_path,
+    opening_move_sequence,
+)
 
 
 def outcome_for_player(game: NormalizedGame) -> str:
@@ -77,6 +81,34 @@ def _most_common_moves(moves: Counter[str]) -> list[dict[str, object]]:
 def _opening_decision_map(games: list[NormalizedGame], color: str) -> dict[str, object]:
     color_games = [game for game in games if game.player_color == color]
     games_by_id = {game.id: game for game in color_games}
+    full_paths = {
+        game.id: opening_move_sequence(game.moves_uci) for game in color_games
+    }
+    supported_positions = {
+        step.position_id
+        for game in color_games
+        for step in opening_move_path(game.moves_uci)
+    }
+
+    # A game may leave the ECO database immediately after playing a move that
+    # another game shares on its way to a deeper named position. Walk backwards
+    # from every supported position across all routes so that identical moves
+    # from an identical position cannot be split between a visible branch and
+    # the residual group.
+    position_predecessors: dict[str, set[str]] = defaultdict(set)
+    for steps in full_paths.values():
+        for previous, current in zip(steps, steps[1:]):
+            position_predecessors[current.position_id].add(previous.position_id)
+
+    pending_positions = list(supported_positions)
+    while pending_positions:
+        position_id = pending_positions.pop()
+        for predecessor_id in position_predecessors[position_id]:
+            if predecessor_id in supported_positions:
+                continue
+            supported_positions.add(predecessor_id)
+            pending_positions.append(predecessor_id)
+
     node_steps: dict[str, OpeningMoveStep] = {}
     node_game_ids: dict[str, set[str]] = defaultdict(set)
     node_moves: dict[str, Counter[str]] = defaultdict(Counter)
@@ -88,7 +120,15 @@ def _opening_decision_map(games: list[NormalizedGame], color: str) -> dict[str, 
     for game in color_games:
         previous = root_id
         seen_positions: set[str] = set()
-        for step in opening_move_path(game.moves_uci):
+        deepest_supported = max(
+            (
+                index
+                for index, step in enumerate(full_paths[game.id])
+                if step.position_id in supported_positions
+            ),
+            default=-1,
+        )
+        for step in full_paths[game.id][: deepest_supported + 1]:
             if step.position_id in seen_positions:
                 break
             seen_positions.add(step.position_id)

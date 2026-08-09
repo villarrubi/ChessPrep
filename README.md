@@ -65,7 +65,7 @@ Lichess se consulta solo con sus modalidades estándar (`ultraBullet`, `bullet`,
 
 Cuando un PGN no aporta `Opening` o `ECO`, ChessPrep recorre sus jugadas y busca la posición más profunda en una base local de 3.810 posiciones ECO. La coincidencia se hace por EPD, no por la secuencia literal, por lo que reconoce transposiciones; si la partida se desvía por una línea secundaria conserva la última apertura conocida. Solo permanece sin clasificar cuando ni las cabeceras ni las posiciones permiten identificarla.
 
-El panel **Repertorio** ofrece dos vistas. **Decisiones** recorre la apertura movimiento a movimiento: la jugada es el título principal, cada nivel pertenece únicamente al jugador o al rival y su frecuencia se calcula dentro de la posición anterior. Las partidas que no alcanzan otra posición conocida aparecen como **Otras continuaciones**, por lo que las ramas visibles explican el 100% del nodo. Cada grupo abre sus partidas exactas, las posiciones idénticas alcanzadas por órdenes distintos se unifican y el botón **Volver a la decisión anterior** permite revisar otra rama sin reiniciar el recorrido. **Aperturas** conserva el resumen tradicional por ECO, nombre y color y su filtro exacto de partidas.
+El panel **Repertorio** ofrece dos vistas. **Decisiones** recorre la apertura movimiento a movimiento: la jugada es el título principal, cada nivel pertenece únicamente al jugador o al rival y su frecuencia se calcula dentro de la posición anterior. Antes de formar **Otras continuaciones**, el mapa agrupa todas las partidas que alcanzan la misma posición mediante la misma jugada, aunque alguna abandone la base ECO justo después; así una jugada visible nunca se duplica en la rama residual. Las ramas explican el 100% del nodo y cada grupo abre sus partidas exactas. Las posiciones idénticas alcanzadas por órdenes distintos se unifican y el botón **Volver a la decisión anterior** permite revisar otra rama sin reiniciar el recorrido. **Aperturas** conserva el resumen tradicional por ECO, nombre y color y su filtro exacto de partidas.
 
 ### Resultados OTB de Info64
 
@@ -132,7 +132,7 @@ Las pruebas comprueban que el ejemplo sintético no se precarga ni se confunde c
 
 A fecha de esta revisión, el estado es:
 
-- **71 pruebas automatizadas superadas**.
+- **72 pruebas automatizadas superadas**.
 - Todo el backend compila correctamente con `python -m compileall api`.
 - Los 13 scripts declarados por la interfaz y el service worker pasan validación sintáctica.
 - Todos los CSS y scripts referenciados por `index.html` se sirven con código HTTP 200 y las cabeceras de seguridad previstas.
