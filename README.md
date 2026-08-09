@@ -33,6 +33,7 @@ web/js/gameAnalysis.js            Orquestación del análisis de una partida
 web/js/exploreMode.js             Análisis interactivo de posiciones
 web/i18n.js                       Traducciones, detección y persistencia del idioma
 web/vendor/                       chess.js y Stockfish WASM/JS (ver vendor/NOTICE.md)
+web/licenses.html                 Licencias de terceros y descarga del código fuente de Stockfish
 api/app/main.py                   Composición de proveedores y servicios concretos
 api/app/app_factory.py            Construcción y configuración de FastAPI
 api/app/routers/                  Adaptadores HTTP agrupados por capacidad
@@ -49,6 +50,8 @@ La dependencia fluye desde los adaptadores hacia el núcleo: las rutas HTTP llam
 ### Análisis Stockfish (cliente)
 
 El visor ocupa la pantalla completa y conserva el tablero y los controles de navegación en una zona estable. El encabezado mantiene siempre el orden convencional blancas–negras, independientemente del jugador buscado. La reproducción automática avanza cada 1,1 segundos. A la derecha, la lista de jugadas usa todo el espacio cuando Stockfish está apagado; al activar **Analizar** (tecla `A`), se divide en dos paneles independientes y desplazables para que ninguna función quede fuera de la vista. La curva de evaluación diferencia visualmente las zonas de ventaja blanca y negra mediante fondos y rellenos distintos. El análisis se ejecuta íntegramente en el navegador con **Stockfish 18 Lite**, en su compilación WebAssembly de un solo hilo y con la red NNUE ligera integrada. El Worker carga los archivos locales `/vendor/stockfish/stockfish-18-lite-single.js` y `.wasm`: no consulta un motor remoto, no exige backend adicional ni requiere cabeceras de aislamiento entre orígenes. La política CSP permite únicamente la compilación WASM local necesaria para el motor. En el panel puedes ajustar el **presupuesto por búsqueda (10k–2M nodos)** y las **líneas MultiPV (1–30)**; por defecto usa 150k nodos y 3 líneas. Un número fijo de nodos da a la jugada recomendada y a la jugada probada el mismo trabajo, con independencia de la velocidad del dispositivo. La mejor jugada siempre procede de una búsqueda de referencia de una sola línea; las MultiPV se presentan únicamente como alternativas y cada búsqueda limpia el hash para evitar que el orden de consultas cambie el resultado. El tablero es interactivo desde que se abre la partida y desde cualquier posición: basta con arrastrar una pieza —sin desplazar visualmente la casilla— o seleccionar sus casillas para probar una jugada legal. El primer movimiento manual activa el análisis automáticamente y muestra su calidad, pérdida de probabilidad de resultado y alternativa óptima. Esa valoración restringe la búsqueda a la jugada elegida desde el mismo FEN y el mismo presupuesto que la referencia. Los análisis terminados se guardan temporalmente por posición, versión del motor y presupuesto, por lo que deshacer recupera exactamente la misma recomendación sin mezclar resultados incompatibles. Se pueden encadenar jugadas, deshacerlas o volver a la línea original; esta interacción utiliza un Worker independiente para no quedar bloqueada detrás del análisis progresivo de la partida.
+
+Stockfish.js y el motor se distribuyen bajo GPLv3. ChessPrep conserva los binarios originales de `stockfish@18.0.8`, la licencia, los avisos, los hashes y el código fuente correspondiente del commit exacto. Todo ello se publica junto al motor en `/licenses.html`; las pruebas automáticas comprueban que esos artefactos siguen disponibles y no han cambiado inadvertidamente.
 
 El documento técnico proponía Next.js como una tecnología orientativa. Para este MVP se ha usado una SPA sin proceso de build: mantiene la separación `web/api`, reduce dependencias y permite ejecutar el producto con Python solamente. FastAPI también sirve los archivos web en desarrollo; en Docker, Nginx expone el frontend y redirige `/api` al servicio correspondiente.
 
@@ -113,7 +116,7 @@ docker compose up --build
 
 Los dos Dockerfiles y `docker-compose.yml` están preparados para la arquitectura modular actual. El contenedor de API copia también `web/js` y `web/vendor`, de modo que puede servir la SPA completa; el contenedor web sirve esos mismos recursos mediante Nginx y redirige `/api` a FastAPI.
 
-> **Verificación pendiente:** la construcción y el arranque de las imágenes no se han ejecutado después de la refactorización porque Docker no está instalado en el equipo de desarrollo actual. Esto no afecta al arranque con `run.ps1`. Cuando Docker esté disponible se debe ejecutar el comando anterior y comprobar `/`, `/api/v1/health`, la carga de una muestra y el visor con Stockfish.
+> **Verificación pendiente:** la construcción y el arranque de las imágenes no se han ejecutado después de la refactorización. El 9 de agosto de 2026 se detectó el cliente de Docker, pero el motor de Docker Desktop no estaba en ejecución. Esto no afecta al arranque con `run.ps1`. Cuando el motor esté disponible se debe ejecutar el comando anterior y comprobar `/`, `/licenses.html`, el archivo fuente de Stockfish, `/api/v1/health`, la carga de una muestra y el visor.
 
 ## Pruebas
 
@@ -166,6 +169,7 @@ Copia `.env.example` si quieres modificar:
 
 - `CHESSPREP_DATASET_TTL_MINUTES`: duración del dataset temporal.
 - `CHESSPREP_LICHESS_MAX_GAMES`: límite predeterminado de Lichess cuando la llamada no indica uno explícito.
+- `CHESSPREP_LICHESS_USER_AGENT`: identificación enviada a Lichess. Antes de desplegar debe incluir la URL pública real de ChessPrep y un contacto válido.
 - `CHESSPREP_CHESSCOM_MAX_GAMES`: límite predeterminado de Chess.com cuando la llamada no indica uno explícito.
 - `CHESSPREP_INFO64_MAX_TOURNAMENTS`: máximo de participaciones recientes de Info64 verificadas en cada consulta OTB (1–100; 30 por defecto).
 - `CHESSPREP_CORS_ORIGINS`: orígenes admitidos por la API.
@@ -179,3 +183,5 @@ La aplicación trata nombres, eventos y cabeceras PGN como texto, aplica codific
 Antes de publicar, configura `CHESSPREP_ALLOWED_HOSTS` con el dominio exacto y `CHESSPREP_CORS_ORIGINS` con el origen HTTPS real. Si no necesitas la documentación interactiva, usa `CHESSPREP_ENABLE_DOCS=false`. Termina TLS en el proxy o plataforma de despliegue y configura HSTS allí; no se incluye HSTS en el contenedor porque el entorno local funciona por HTTP.
 
 La disponibilidad de Lichess, Chess.com, FIDE e Info64 depende de sus respectivos servicios. Si una plataforma online no responde, el dossier combinado utiliza las demás que estén disponibles. Para consultar resultados OTB se exige un ID FIDE válido y cada participación de Info64 se vuelve a comprobar contra él. El ID y los resultados no proporcionan por sí solos las jugadas. La importación PGN es un flujo separado para reproducir y analizar posiciones, y no atribuye identidad FIDE al dossier creado.
+
+Las llamadas a Lichess se serializan mediante un bloqueo único para todo el proceso. Después de un `429`, ninguna llamada nueva se realiza durante al menos 60 segundos o durante el `Retry-After` indicado si es mayor. El contenedor oficial ejecuta un solo proceso de Uvicorn; si el despliegue se amplía a varios procesos o réplicas, el bloqueo debe sustituirse por un coordinador compartido.

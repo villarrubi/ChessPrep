@@ -1,7 +1,8 @@
-const CACHE_NAME = "chessprep-v20260807-progress-ui";
+const CACHE_NAME = "chessprep-v20260809-legal-final";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
+  "/licenses.html",
   "/styles.css",
   "/app.js",
   "/i18n.js",
@@ -16,7 +17,12 @@ const STATIC_ASSETS = [
   "/js/otbController.js",
   "/js/pgnImportController.js",
   "/js/registerServiceWorker.js",
-  "/js/stockfishEngine.js"
+  "/js/stockfishEngine.js",
+  "/vendor/NOTICE.md",
+  "/vendor/chess/LICENSE",
+  "/vendor/stockfish/COPYING.txt",
+  "/vendor/stockfish/SOURCE.md",
+  "/vendor/stockfish/UGLIFYJS-LICENSE.txt"
 ];
 
 // Instalar Service Worker y cachear assets estáticos

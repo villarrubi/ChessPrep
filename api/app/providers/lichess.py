@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -12,8 +14,12 @@ from api.app.services.text import clean_identifier, clean_untrusted_text
 
 
 BASE_URL = "https://lichess.org"
-USER_AGENT = "ChessPrep/1.0"
+USER_AGENT = os.getenv(
+    "CHESSPREP_LICHESS_USER_AGENT",
+    "ChessPrep/1.0 (+https://github.com/villarrubi/ChessPrep)",
+)
 MAX_RESPONSE_BYTES = 12_000_000
+MIN_RATE_LIMIT_PAUSE_SECONDS = 60.0
 STANDARD_PERF_TYPES = (
     "ultraBullet",
     "bullet",
@@ -23,9 +29,49 @@ STANDARD_PERF_TYPES = (
     "correspondence",
 )
 
+# Lichess requires clients to make only one request at a time. The production
+# image runs one Uvicorn process, so this lock serializes every Lichess call
+# made by all request threads in that process. A deployment with more workers
+# or replicas must replace it with a shared/distributed gate.
+_request_lock = threading.Lock()
+_rate_limited_until = 0.0
+
 
 class ProviderUnavailable(RuntimeError):
     pass
+
+
+def _monotonic() -> float:
+    return time.monotonic()
+
+
+def _sleep(seconds: float) -> None:
+    time.sleep(seconds)
+
+
+def _retry_delay(error: HTTPError) -> float:
+    retry_after = error.headers.get("Retry-After") if error.headers else None
+    try:
+        requested_delay = float(retry_after) if retry_after is not None else 0.0
+    except (TypeError, ValueError):
+        requested_delay = 0.0
+    return max(MIN_RATE_LIMIT_PAUSE_SECONDS, requested_delay)
+
+
+def _wait_until_available() -> None:
+    while True:
+        remaining = _rate_limited_until - _monotonic()
+        if remaining <= 0:
+            return
+        _sleep(remaining)
+
+
+def _record_rate_limit(error: HTTPError) -> None:
+    global _rate_limited_until
+    _rate_limited_until = max(
+        _rate_limited_until,
+        _monotonic() + _retry_delay(error),
+    )
 
 
 def _get(path: str, accept: str = "application/json", timeout: int = 8) -> bytes:
@@ -33,20 +79,30 @@ def _get(path: str, accept: str = "application/json", timeout: int = 8) -> bytes
         f"{BASE_URL}{path}",
         headers={"Accept": accept, "User-Agent": USER_AGENT},
     )
-    try:
-        with urlopen(request, timeout=timeout) as response:
-            body = response.read(MAX_RESPONSE_BYTES + 1)
-            if len(body) > MAX_RESPONSE_BYTES:
-                raise ProviderUnavailable("La respuesta de Lichess supera el límite permitido.")
-            return body
-    except HTTPError as exc:
-        if exc.code == 404:
-            raise LookupError("El jugador no existe en Lichess.") from exc
-        if exc.code == 429:
-            raise ProviderUnavailable("Lichess ha limitado temporalmente las consultas.") from exc
-        raise ProviderUnavailable(f"Lichess respondió con el estado {exc.code}.") from exc
-    except (URLError, TimeoutError) as exc:
-        raise ProviderUnavailable("No se pudo conectar con Lichess.") from exc
+    with _request_lock:
+        _wait_until_available()
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                body = response.read(MAX_RESPONSE_BYTES + 1)
+                if len(body) > MAX_RESPONSE_BYTES:
+                    raise ProviderUnavailable(
+                        "La respuesta de Lichess supera el límite permitido."
+                    )
+                return body
+        except HTTPError as exc:
+            if exc.code == 404:
+                raise LookupError("El jugador no existe en Lichess.") from exc
+            if exc.code == 429:
+                _record_rate_limit(exc)
+                raise ProviderUnavailable(
+                    "Lichess ha limitado temporalmente las consultas; "
+                    "ChessPrep esperará al menos un minuto antes de reanudarlas."
+                ) from exc
+            raise ProviderUnavailable(
+                f"Lichess respondió con el estado {exc.code}."
+            ) from exc
+        except (URLError, TimeoutError) as exc:
+            raise ProviderUnavailable("No se pudo conectar con Lichess.") from exc
 
 
 def get_player(username: str) -> PlayerRef:

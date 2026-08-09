@@ -15,7 +15,7 @@
     <title>ChessPrep — Conoce el tablero antes de sentarte</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%2310231f%22/><text x=%2232%22 y=%2246%22 text-anchor=%22middle%22 font-size=%2242%22 fill=%22%23f4f1e9%22>♞</text></svg>" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="stylesheet" href="/styles.css?v=20260807-best-no-row" />
+    <link rel="stylesheet" href="/styles.css?v=20260809-legal-footer" />
   </head>
   <body>
     <div class="page-shell">
@@ -270,16 +270,44 @@
       <footer>
         <a class="brand footer-brand" href="#top"><span class="brand-mark">♞</span><span class="brand-name">ChessPrep</span></a>
         <p>Preparación ajedrecística basada en hechos.</p>
-        <div><a href="/api/docs" target="_blank" rel="noopener noreferrer">API</a><span>·</span><span>Datos temporales</span><span>·</span><span>Sin IA generativa</span></div>
+        <nav class="footer-links" aria-label="Información técnica y legal">
+          <a href="/api/docs" target="_blank" rel="noopener noreferrer">API</a>
+          <span>·</span>
+          <a href="/licenses.html">Licencias y código fuente</a>
+          <span>·</span>
+          <a href="/vendor/NOTICE.md">Avisos de terceros</a>
+        </nav>
         <div class="footer-credits">
           <p>Desarrollado por <a href="https://www.linkedin.com/in/alejandro-villarrubia-garc%C3%ADa-3078892b9/" target="_blank" rel="noopener noreferrer">Alejandro Villarrubia</a>, <a href="https://www.linkedin.com/in/gonzalo-colina-b%C3%A1scones-965361330/" target="_blank" rel="noopener noreferrer">Gonzalo José Colina</a> y <a href="https://www.linkedin.com/in/francisco-javier-ju%C3%A1rez-guti%C3%A9rrez-553a11277/" target="_blank" rel="noopener noreferrer">Francisco Javier Juárez</a></p>
+          <p class="footer-license-row">
+            <strong>Software de terceros:</strong>
+            <a href="/licenses.html#stockfish">Stockfish 18 Lite</a>
+            (<a href="/vendor/stockfish/COPYING.txt">GPL-3.0</a>;
+            <a href="/vendor/stockfish/source/stockfish.js-18.0.8-source.tar.gz" download>código fuente correspondiente</a>)
+            <span>·</span>
+            <a href="/licenses.html#chess-js">chess.js 0.13.4</a>
+            (<a href="/vendor/chess/LICENSE">BSD-2-Clause</a>)
+          </p>
           <p class="data-sources">
-            Datos proporcionados por:
+            <strong>Fuentes externas, cuando corresponda:</strong>
             <a href="https://lichess.org/" target="_blank" rel="noopener noreferrer">Lichess</a>,
             <a href="https://chess.com/" target="_blank" rel="noopener noreferrer">Chess.com</a>,
-            <a href="https://lumbrasgigabase.com/" target="_blank" rel="noopener noreferrer">Lumbra's Gigabase</a>
-            <span>y <a href="https://info64.feda.org/" target="_blank" rel="noopener noreferrer">Info64/FEDA</a></span>
+            <a href="https://lumbrasgigabase.com/" target="_blank" rel="noopener noreferrer">Lumbra's Gigabase</a>,
+            <a href="https://ratings.fide.com/" target="_blank" rel="noopener noreferrer">FIDE Ratings</a>
+            <span>e <a href="https://info64.org/" target="_blank" rel="noopener noreferrer">Info64</a>.</span>
+            La atribución no implica afiliación ni sustituye el permiso de uso de cada fuente.
           </p>
+          <p class="footer-data-licenses">
+            <strong>Licencias de datos aplicables únicamente al material expresamente identificado:</strong>
+            <a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer">CC0 1.0</a>
+            se aplica únicamente a las exportaciones que Lichess publica
+            expresamente bajo esa dedicación. ChessPrep no integra actualmente
+            datos de Lumbra's Gigabase; su posible incorporación está aplazada.
+          </p>
+          <p class="footer-proprietary">
+            El código propio de ChessPrep es propietario y no se licencia bajo GPL ni Creative Commons. Las licencias anteriores se aplican exclusivamente a sus respectivos componentes o datos de terceros.
+          </p>
+          <p class="footer-safety">Datos procesados temporalmente · Sin IA generativa · No debe utilizarse para recibir asistencia durante una partida en curso.</p>
         </div>
       </footer>
     </div>

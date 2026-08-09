@@ -1,4 +1,7 @@
+import hashlib
+import io
 import json
+import tarfile
 
 from fastapi.testclient import TestClient
 
@@ -69,12 +72,47 @@ def test_stockfish_18_lite_worker_and_wasm_are_served_locally():
     engine_script = client.get("/js/stockfishEngine.js").text
     worker = client.get("/vendor/stockfish/stockfish-18-lite-single.js")
     wasm = client.get("/vendor/stockfish/stockfish-18-lite-single.wasm")
+    source = client.get(
+        "/vendor/stockfish/source/stockfish.js-18.0.8-source.tar.gz"
+    )
+    gpl = client.get("/vendor/stockfish/COPYING.txt")
+    source_record = client.get("/vendor/stockfish/SOURCE.md")
+    uglify_license = client.get("/vendor/stockfish/UGLIFYJS-LICENSE.txt")
+    licenses_page = client.get("/licenses.html").text
 
     assert worker.status_code == 200
     assert "Stockfish.js 18" in worker.text[:500]
+    assert "nn-9067e33176e" in worker.text[:500]
     assert wasm.status_code == 200
     assert len(wasm.content) == 7_295_411
     assert wasm.headers["content-type"].startswith("application/wasm")
+    assert source.status_code == 200
+    assert gpl.status_code == 200
+    assert "GNU GENERAL PUBLIC LICENSE" in gpl.text[:200]
+    assert source_record.status_code == 200
+    assert uglify_license.status_code == 200
+    assert "BSD license" in uglify_license.text[:100]
+    assert hashlib.sha256(worker.content).hexdigest().upper() == (
+        "5243FD9B276CAB7DFE3AD1D43AB9EAD73568FAC76468C614242977A210C4A391"
+    )
+    assert hashlib.sha256(wasm.content).hexdigest().upper() == (
+        "A8FBC05EC6920B56D7485826DCB02C5FFD2826BCBF751CF973046F237A9096F1"
+    )
+    assert hashlib.sha256(source.content).hexdigest().upper() == (
+        "BB9E37A886E7E53B6E5699769A68A4A271138BF5438510EB2D08A284F232CA51"
+    )
+    with tarfile.open(fileobj=io.BytesIO(source.content), mode="r:gz") as archive:
+        source_members = set(archive.getnames())
+    assert "stockfish.js-18.0.8/Copying.txt" in source_members
+    assert "stockfish.js-18.0.8/build.js" in source_members
+    assert "stockfish.js-18.0.8/src/Makefile" in source_members
+    assert "stockfish.js-18.0.8/src/lite_nets.h" in source_members
+    assert (
+        'href="/vendor/stockfish/source/stockfish.js-18.0.8-source.tar.gz"'
+        in licenses_page
+    )
+    assert 'href="/vendor/stockfish/COPYING.txt"' in licenses_page
+    assert 'href="/vendor/stockfish/UGLIFYJS-LICENSE.txt"' in licenses_page
     assert client.get("/vendor/stockfish/stockfish.js").status_code == 404
     assert 'const WORKER_URL = "/vendor/stockfish/stockfish-18-lite-single.js"' in engine_script
     assert 'const ENGINE_VERSION = "18-lite-single-18.0.8"' in engine_script
@@ -93,7 +131,7 @@ def test_loader_cycles_all_pieces_without_disabling_its_timer():
     index = client.get("/").text
     script = client.get("/app.js").text
 
-    assert "/app.js?v=20260807-best-color" in index
+    assert "/app.js?v=20260807-progress-ui" in index
     assert 'const LOADER_PIECES = ["♙", "♘", "♗", "♖", "♕", "♔"];' in script
     assert "const LOADER_INTERVAL_MS = 450;" in script
     assert "window.setInterval(advanceLoaderPiece, LOADER_INTERVAL_MS)" in script
@@ -109,7 +147,7 @@ def test_language_switcher_and_elo_calculator_are_available():
     assert 'id="language-button"' in index
     assert 'id="language-menu"' in index
     assert index.count('data-language="') == 5
-    assert "/i18n.js?v=20260807-best-color" in index
+    assert "/i18n.js?v=20260807-progress-ui" in index
     assert 'const STORAGE_KEY = "chessprep_language";' in translations
     assert '{ code: "es"' in translations
     assert '{ code: "en"' in translations
@@ -261,10 +299,11 @@ def test_manual_moves_are_draggable_and_use_an_independent_engine():
     assert '.board-square[draggable="true"]' not in styles
 
 
-def test_stockfish_recommendation_and_manual_grading_share_one_reference():
+def test_stockfish_live_lines_and_manual_grading_share_one_node_budget():
     viewer_script = client.get("/js/gameViewerController.js").text
     engine_script = client.get("/js/stockfishEngine.js").text
     analysis_script = client.get("/js/gameAnalysis.js").text
+    explore_script = client.get("/js/exploreMode.js").text
     quality_script = client.get("/js/moveQuality.js").text
     translations = client.get("/i18n.js").text
 
@@ -280,9 +319,13 @@ def test_stockfish_recommendation_and_manual_grading_share_one_reference():
     assert "await this._syncPosition(fen)" in engine_script
     assert "if (!sawSearchInfo && move !== \"(none)\") return false" in engine_script
     assert "position fen ${fen} moves ${moveUci}" not in engine_script
-    assert "function mergeReferenceLines" in viewer_script
-    assert "engine.analyzeFen(fen, { nodes, multipv: 1 })" in viewer_script
-    assert "mergeReferenceLines(fen, reference, alternatives, multipv)" in viewer_script
+    assert "liveEngine = new global.StockfishEngine()" in viewer_script
+    assert "function formatLiveLines" in viewer_script
+    assert "liveEngine.analyzeFen(fen, { nodes, multipv })" in viewer_script
+    assert "mergeReferenceLines" not in viewer_script
+    assert "engine.analyzeFen(fen, { nodes, multipv: 1 })" not in viewer_script
+    assert "this.engine.analyzeFen(fenBefore, { nodes, multipv: 1 })" in explore_script
+    assert "this.engine.evaluateMove(fenBefore, triedUci, { nodes })" in explore_script
     assert "state.analysis?.plies?.[state.ply - 1]?.bestUci" not in viewer_script
     assert 't("analysis.bestLine")' in viewer_script
     assert '"analysis.bestLine": "Mejor línea"' in translations

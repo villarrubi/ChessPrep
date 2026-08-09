@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Licencias de terceros, avisos y código fuente correspondiente de los componentes usados por ChessPrep."
+    />
+    <meta name="theme-color" content="#10231f" />
+    <title>Licencias y código fuente — ChessPrep</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%2310231f%22/><text x=%2232%22 y=%2246%22 text-anchor=%22middle%22 font-size=%2242%22 fill=%22%23f4f1e9%22>♞</text></svg>" />
+    <link rel="stylesheet" href="/styles.css?v=20260809-legal-footer" />
+  </head>
+  <body class="legal-page">
+    <div class="page-shell legal-shell">
+      <header class="site-header legal-header">
+        <a class="brand" href="/" aria-label="ChessPrep, volver al inicio">
+          <span class="brand-mark" aria-hidden="true">♞</span>
+          <span class="brand-name">ChessPrep</span>
+        </a>
+        <a class="legal-back-link" href="/">← Volver a la aplicación</a>
+      </header>
+
+      <main class="legal-main">
+        <div class="legal-intro">
+          <p class="section-kicker">Transparencia de software</p>
+          <h1>Licencias y código fuente</h1>
+          <p>
+            Esta página identifica los componentes de terceros distribuidos con
+            ChessPrep y facilita sus licencias y código fuente correspondiente.
+            No concede una licencia sobre el código propio de ChessPrep.
+          </p>
+        </div>
+
+        <article class="legal-card" id="stockfish">
+          <div class="legal-card-heading">
+            <div>
+              <p class="legal-label">Motor de análisis</p>
+              <h2>Stockfish 18 Lite</h2>
+            </div>
+            <span class="legal-badge">GPL-3.0</span>
+          </div>
+
+          <p>
+            ChessPrep distribuye sin modificaciones la compilación WebAssembly
+            lite y de un solo hilo incluida en el paquete npm
+            <code>stockfish@18.0.8</code>. Stockfish se ejecuta localmente en el
+            navegador como Web Worker.
+          </p>
+
+          <dl class="legal-facts">
+            <div>
+              <dt>Fuente exacta de la distribución</dt>
+              <dd><code>nmrugg/stockfish.js</code>, commit <code>93c994592dcf3b4b21052ab925e9b534df9c0918</code></dd>
+            </div>
+            <div>
+              <dt>Motor de origen</dt>
+              <dd><code>official-stockfish/Stockfish</code>, commit <code>cb3d4ee9b47d0c5aae855b12379378ea1439675c</code></dd>
+            </div>
+            <div>
+              <dt>Compilación documentada</dt>
+              <dd>Emscripten 3.1.7; <code>node build.js --single-threaded --lite -f</code></dd>
+            </div>
+            <div>
+              <dt>Red NNUE incorporada</dt>
+              <dd><code>nn-9067e33176e8.nnue</code>, acreditada a Linmiao Xu (<code>linrock</code>)</dd>
+            </div>
+          </dl>
+
+          <div class="legal-actions">
+            <a class="legal-primary-link" href="/vendor/stockfish/source/stockfish.js-18.0.8-source.tar.gz" download>
+              Descargar código fuente correspondiente
+            </a>
+            <a href="/vendor/stockfish/COPYING.txt">Leer la GPLv3</a>
+            <a href="/vendor/stockfish/SOURCE.md">Procedencia, hashes y compilación</a>
+            <a href="/vendor/stockfish/UGLIFYJS-LICENSE.txt">Licencia del minificador de compilación</a>
+          </div>
+
+          <p class="legal-hash">
+            SHA-256 del archivo fuente:
+            <code>BB9E37A886E7E53B6E5699769A68A4A271138BF5438510EB2D08A284F232CA51</code>
+          </p>
+          <p class="legal-hash">
+            SHA-256 de los archivos distribuidos: JavaScript
+            <code>5243FD9B276CAB7DFE3AD1D43AB9EAD73568FAC76468C614242977A210C4A391</code>
+            y WebAssembly
+            <code>A8FBC05EC6920B56D7485826DCB02C5FFD2826BCBF751CF973046F237A9096F1</code>.
+          </p>
+          <p class="legal-note">
+            ChessPrep ofrece la GPL y el código fuente correspondiente desde el
+            mismo servidor y sin coste adicional mientras distribuya estos
+            binarios. También puede consultarse el
+            <a href="https://github.com/nmrugg/stockfish.js/commit/93c994592dcf3b4b21052ab925e9b534df9c0918" target="_blank" rel="noopener noreferrer">commit exacto en GitHub</a>.
+          </p>
+        </article>
+
+        <article class="legal-card" id="chess-js">
+          <div class="legal-card-heading">
+            <div>
+              <p class="legal-label">Reglas y notación</p>
+              <h2>chess.js 0.13.4</h2>
+            </div>
+            <span class="legal-badge">BSD-2-Clause</span>
+          </div>
+          <p>
+            Biblioteca de reglas de ajedrez distribuida bajo la licencia BSD de
+            dos cláusulas. ChessPrep conserva el aviso de copyright y el texto
+            completo de la licencia.
+          </p>
+          <div class="legal-actions">
+            <a href="/vendor/chess/LICENSE">Leer la licencia de chess.js</a>
+            <a href="https://github.com/jhlywa/chess.js/tree/v0.13.4" target="_blank" rel="noopener noreferrer">Consultar el proyecto original</a>
+          </div>
+        </article>
+
+        <article class="legal-card" id="data-sources">
+          <div class="legal-card-heading">
+            <div>
+              <p class="legal-label">Atribución y alcance</p>
+              <h2>Datos y servicios externos</h2>
+            </div>
+          </div>
+          <p>
+            Que una fuente aparezca en ChessPrep no significa que todo su
+            contenido tenga una licencia abierta. Cada integración debe respetar
+            los términos, permisos y límites del proveedor. La atribución no
+            sustituye una autorización cuando esta sea necesaria.
+          </p>
+          <ul class="legal-source-list">
+            <li>
+              <strong>Lichess:</strong> las consultas de la API se rigen por sus
+              <a href="https://lichess.org/terms-of-service" target="_blank" rel="noopener noreferrer">términos</a>
+              y por sus
+              <a href="https://lichess.org/page/api-tips" target="_blank" rel="noopener noreferrer">reglas de tasa</a>.
+              La integración realiza una sola petición simultánea y se detiene
+              al menos un minuto tras un <code>429</code>. Solo las exportaciones identificadas en
+              <a href="https://database.lichess.org/" target="_blank" rel="noopener noreferrer">database.lichess.org</a>
+              se presentan aquí como
+              <a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer">CC0 1.0</a>.
+            </li>
+            <li>
+              <strong>Lumbra's Gigabase:</strong> el material expresamente
+              publicado bajo
+              <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>
+              requiere atribución, uso no comercial y ShareAlike para las
+              adaptaciones compartidas. ChessPrep no integra actualmente datos
+              de Lumbra; esa posible integración ha quedado aplazada.
+            </li>
+            <li>
+              <strong>Chess.com:</strong> su PubAPI y los datos consultados se
+              someten a la
+              <a href="https://www.chess.com/legal/user-agreement" target="_blank" rel="noopener noreferrer">User Agreement</a>
+              y a la documentación del servicio; no se presentan como contenido
+              Creative Commons.
+            </li>
+            <li>
+              <strong>FIDE Ratings e Info64:</strong> la información pública y
+              los enlaces se atribuyen a sus titulares. ChessPrep no presenta
+              estas fuentes como datos abiertos ni como una autorización general
+              para su extracción automatizada.
+            </li>
+            <li>
+              <strong>PGN aportados por usuarios:</strong> ChessPrep no recibe
+              una licencia general sobre ellos. La persona que los importa debe
+              disponer de los derechos o permisos necesarios.
+            </li>
+          </ul>
+        </article>
+
+        <p class="legal-notice-link">
+          El inventario conjunto está disponible en el
+          <a href="/vendor/NOTICE.md">aviso de componentes de terceros</a>.
+        </p>
+      </main>
+
+      <footer class="legal-footer">
+        <a class="brand footer-brand" href="/"><span class="brand-mark">♞</span><span class="brand-name">ChessPrep</span></a>
+        <p>Licencias y código fuente de componentes de terceros.</p>
+        <nav class="footer-links" aria-label="Navegación">
+          <a href="/">Aplicación</a><span>·</span><a href="/api/docs" target="_blank" rel="noopener noreferrer">API</a><span>·</span><a href="/vendor/NOTICE.md">Avisos de terceros</a>
+        </nav>
+      </footer>
+    </div>
+  </body>
+</html>
