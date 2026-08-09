@@ -4,8 +4,9 @@ import json
 import os
 import threading
 import time
+from datetime import UTC, date, datetime
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 from api.app.models import GameType, PlayerRef
@@ -19,6 +20,7 @@ USER_AGENT = os.getenv(
     "ChessPrep/1.0 (+https://github.com/villarrubi/ChessPrep)",
 )
 MAX_RESPONSE_BYTES = 12_000_000
+MAX_GAMES_PER_REQUEST = 200
 MIN_RATE_LIMIT_PAUSE_SECONDS = 60.0
 STANDARD_PERF_TYPES = (
     "ultraBullet",
@@ -142,11 +144,36 @@ def get_player(username: str) -> PlayerRef:
     )
 
 
-def fetch_games(username: str, max_games: int | None = None) -> ParseResult:
+def _date_to_millis(value: date, *, end_of_day: bool = False) -> int:
+    boundary = datetime.combine(
+        value,
+        datetime.max.time() if end_of_day else datetime.min.time(),
+        tzinfo=UTC,
+    )
+    return int(boundary.timestamp() * 1000)
+
+
+def fetch_games(
+    username: str,
+    max_games: int | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> ParseResult:
     configured_max = int(os.getenv("CHESSPREP_LICHESS_MAX_GAMES", "50"))
-    limit = min(max(max_games or configured_max, 1), 100)
+    limit = min(max(max_games or configured_max, 1), MAX_GAMES_PER_REQUEST)
     standard_perfs = ",".join(STANDARD_PERF_TYPES)
-    query = f"max={limit}&clocks=false&evals=false&opening=true&perfType={standard_perfs}"
+    params: dict[str, str | int] = {
+        "max": limit,
+        "clocks": "false",
+        "evals": "false",
+        "opening": "true",
+        "perfType": standard_perfs,
+    }
+    if date_from:
+        params["since"] = _date_to_millis(date_from)
+    if date_to:
+        params["until"] = _date_to_millis(date_to, end_of_day=True)
+    query = urlencode(params)
     encoded_username = quote(clean_untrusted_text(username, max_length=80), safe="")
     body = _get(
         f"/api/games/user/{encoded_username}?{query}",

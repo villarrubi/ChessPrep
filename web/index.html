@@ -15,7 +15,7 @@
     <title>ChessPrep — Conoce el tablero antes de sentarte</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%2310231f%22/><text x=%2232%22 y=%2246%22 text-anchor=%22middle%22 font-size=%2242%22 fill=%22%23f4f1e9%22>♞</text></svg>" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="stylesheet" href="/styles.css?v=20260809-repertoire-moves" />
+    <link rel="stylesheet" href="/styles.css?v=20260809-online-sample" />
   </head>
   <body>
     <div class="page-shell">
@@ -71,7 +71,28 @@
                 <button type="button" data-source="lichess"><i class="source-dot lichess"></i> Lichess</button>
                 <button type="button" data-source="chess.com"><i class="source-dot chesscom"></i> Chess.com</button>
               </div>
-              <p class="search-mode-note"><span class="different-aliases-label">¿Usa alias distintos?</span> <button class="text-button" id="open-combine" type="button">Combinar perfiles</button></p>
+              <div class="online-sample-controls" aria-label="Tamaño y periodo de la muestra online">
+                <label class="online-sample-field online-limit-field">
+                  <span>Máximo</span>
+                  <select id="online-game-limit">
+                    <option value="50">50 partidas</option>
+                    <option value="100" selected>100 partidas</option>
+                    <option value="200">200 partidas</option>
+                  </select>
+                </label>
+                <label class="online-sample-field">
+                  <span>Desde</span>
+                  <input id="online-date-from" type="date" />
+                </label>
+                <label class="online-sample-field">
+                  <span>Hasta</span>
+                  <input id="online-date-to" type="date" />
+                </label>
+              </div>
+              <div class="online-sample-footer">
+                <p class="online-sample-help">El máximo siempre se aplica, también al filtrar por fechas.</p>
+                <p class="search-mode-note"><span class="different-aliases-label">¿Usa alias distintos?</span> <button class="text-button" id="open-combine" type="button">Combinar perfiles</button></p>
+              </div>
             </div>
             <div class="search-mode-panel" id="search-panel-otb" role="tabpanel" aria-labelledby="search-mode-otb" hidden>
               <form class="search-form" id="hero-otb-search" role="search" novalidate>
@@ -601,7 +622,7 @@
     </div>
     <div class="toast-region" id="toast-region" aria-live="polite"></div>
 
-    <script src="/i18n.js?v=20260809-repertoire-moves" defer></script>
+    <script src="/i18n.js?v=20260809-online-sample" defer></script>
     <script src="/js/storage.js?v=20260803-pwa-storage1" defer></script>
     <script src="/js/moveQuality.js?v=20260807-best-color" defer></script>
     <script src="/js/stockfishEngine.js?v=20260807-best-color" defer></script>
@@ -609,11 +630,11 @@
     <script src="/js/exploreMode.js?v=20260807-best-color" defer></script>
     <!-- Feature modules register their controllers; app.js composes them last. -->
     <script src="/js/gameViewerController.js?v=20260807-best-no-row" defer></script>
-    <script src="/js/dossierController.js?v=20260809-repertoire-moves" defer></script>
+    <script src="/js/dossierController.js?v=20260809-online-sample" defer></script>
     <script src="/js/otbController.js?v=20260807-best-color" defer></script>
     <script src="/js/pgnImportController.js?v=20260807-best-color" defer></script>
     <script src="/js/eloCalculator.js?v=20260807-best-color" defer></script>
-    <script src="/app.js?v=20260809-repertoire-moves" defer></script>
-    <script src="/js/registerServiceWorker.js?v=20260809-repertoire-moves" defer></script>
+    <script src="/app.js?v=20260809-online-sample" defer></script>
+    <script src="/js/registerServiceWorker.js?v=20260809-online-sample" defer></script>
   </body>
 </html>

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, date, datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
@@ -16,6 +18,7 @@ from api.app.services.text import clean_identifier, clean_untrusted_text
 BASE_URL = "https://api.chess.com"
 USER_AGENT = "ChessPrep/1.0 (public chess preparation tool; github.com/villarrubi/ChessPrep)"
 MAX_RESPONSE_BYTES = 12_000_000
+MAX_GAMES_PER_REQUEST = 200
 
 
 class ProviderUnavailable(RuntimeError):
@@ -115,9 +118,81 @@ def _pgn_with_external_id(game: dict) -> str | None:
     return f'[GameId "{external_id}"]\n{pgn}'
 
 
-def fetch_games(username: str, max_games: int | None = None) -> ParseResult:
+def _archive_month(archive_url: str) -> tuple[int, int] | None:
+    parts = urlsplit(archive_url).path.rstrip("/").split("/")
+    if len(parts) < 2:
+        return None
+    try:
+        year, month = int(parts[-2]), int(parts[-1])
+        date(year, month, 1)
+    except (TypeError, ValueError):
+        return None
+    return year, month
+
+
+def _archive_matches_period(
+    archive_url: str,
+    date_from: date | None,
+    date_to: date | None,
+) -> bool:
+    archive_month = _archive_month(archive_url)
+    if archive_month is None:
+        return True
+    if date_from and archive_month < (date_from.year, date_from.month):
+        return False
+    if date_to and archive_month > (date_to.year, date_to.month):
+        return False
+    return True
+
+
+def _game_date(game: dict) -> date | None:
+    end_time = game.get("end_time")
+    if isinstance(end_time, (int, float)):
+        try:
+            return datetime.fromtimestamp(end_time, tz=UTC).date()
+        except (OverflowError, OSError, ValueError):
+            pass
+
+    pgn = str(game.get("pgn") or "")
+    for header in ("UTCDate", "EndDate", "Date"):
+        match = re.search(
+            rf'^\[{header}\s+"(\d{{4}})[.-](\d{{2}})[.-](\d{{2}})"\]',
+            pgn,
+            flags=re.MULTILINE,
+        )
+        if not match:
+            continue
+        try:
+            return date(*(int(value) for value in match.groups()))
+        except ValueError:
+            continue
+    return None
+
+
+def _game_matches_period(
+    game: dict,
+    date_from: date | None,
+    date_to: date | None,
+) -> bool:
+    if not date_from and not date_to:
+        return True
+    played_on = _game_date(game)
+    if played_on is None:
+        return False
+    return not (
+        (date_from and played_on < date_from)
+        or (date_to and played_on > date_to)
+    )
+
+
+def fetch_games(
+    username: str,
+    max_games: int | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> ParseResult:
     configured_max = int(os.getenv("CHESSPREP_CHESSCOM_MAX_GAMES", "50"))
-    limit = min(max(max_games or configured_max, 1), 100)
+    limit = min(max(max_games or configured_max, 1), MAX_GAMES_PER_REQUEST)
     encoded_username = quote(clean_untrusted_text(username, max_length=80).lower(), safe="")
     archive_index = _get_json(f"/pub/player/{encoded_username}/games/archives")
     archives = archive_index.get("archives", [])
@@ -127,12 +202,16 @@ def fetch_games(username: str, max_games: int | None = None) -> ParseResult:
     # Chess.com recommends serial access. Start with the most recent month and
     # only request older archives when the configured sample still needs games.
     for archive_url in reversed(archives):
+        if not _archive_matches_period(archive_url, date_from, date_to):
+            continue
         archive = _get_json(archive_url, timeout=20)
         standard_games = []
         for game in archive.get("games", []):
             rules = str(game.get("rules") or "chess")
             if rules != "chess":
                 excluded_variants[variant_label(rules)] += 1
+                continue
+            if not _game_matches_period(game, date_from, date_to):
                 continue
             annotated = _pgn_with_external_id(game)
             if annotated:

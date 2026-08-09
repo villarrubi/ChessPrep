@@ -4,6 +4,7 @@ import json
 import queue
 import threading
 from collections.abc import Iterator
+from datetime import date
 
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
@@ -26,18 +27,40 @@ def create_players_router(services: ApplicationServices) -> APIRouter:
     @router.post("/players/combined")
     def combine_players(
         payload: CombinedPlayerCreate,
-        max_games: int = Query(50, ge=1, le=100),
+        max_games: int = Query(
+            100,
+            ge=1,
+            le=200,
+            description="Maximum total number of games after merging sources",
+        ),
+        date_from: date | None = Query(None, alias="from"),
+        date_to: date | None = Query(None, alias="to"),
         stream: bool = Query(False, description="Emit NDJSON progress events while combining"),
     ):
+        def sample_request(dataset) -> dict[str, object]:
+            by_source: dict[str, int] = {}
+            for game in dataset.games:
+                by_source[game.source] = by_source.get(game.source, 0) + 1
+            return {
+                "maximum": max_games,
+                "loaded": len(dataset.games),
+                "by_source": by_source,
+                "from": date_from.isoformat() if date_from else None,
+                "to": date_to.isoformat() if date_to else None,
+            }
+
         if not stream:
             dataset, warnings, duplicates = services.online_players.combine(
                 payload,
                 max_games,
+                date_from=date_from,
+                date_to=date_to,
             )
             return {
                 "dataset": services.datasets.dataset_summary(dataset),
                 "warnings": warnings,
                 "duplicates": duplicates,
+                "sample_request": sample_request(dataset),
             }
 
         def event_stream() -> Iterator[str]:
@@ -52,6 +75,8 @@ def create_players_router(services: ApplicationServices) -> APIRouter:
                         payload,
                         max_games,
                         on_progress=on_progress,
+                        date_from=date_from,
+                        date_to=date_to,
                     )
                     events.put(
                         (
@@ -61,6 +86,7 @@ def create_players_router(services: ApplicationServices) -> APIRouter:
                                 "dataset": services.datasets.dataset_summary(dataset),
                                 "warnings": warnings,
                                 "duplicates": duplicates,
+                                "sample_request": sample_request(dataset),
                             },
                         )
                     )
@@ -111,12 +137,28 @@ def create_players_router(services: ApplicationServices) -> APIRouter:
     def refresh_games(
         source: str,
         external_id: str,
-        max_games: int = Query(50, ge=1, le=100),
+        max_games: int = Query(100, ge=1, le=200),
+        date_from: date | None = Query(None, alias="from"),
+        date_to: date | None = Query(None, alias="to"),
     ):
-        result = services.online_players.refresh(source, external_id, max_games)
+        result = services.online_players.refresh(
+            source,
+            external_id,
+            max_games,
+            date_from,
+            date_to,
+        )
+        dataset = result["dataset"]
         return {
             **result,
-            "dataset": services.datasets.dataset_summary(result["dataset"]),
+            "dataset": services.datasets.dataset_summary(dataset),
+            "sample_request": {
+                "maximum": max_games,
+                "loaded": len(dataset.games),
+                "by_source": {source: len(dataset.games)},
+                "from": date_from.isoformat() if date_from else None,
+                "to": date_to.isoformat() if date_to else None,
+            },
         }
 
     @router.get("/players/{source}/{external_id}/games")

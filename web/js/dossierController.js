@@ -199,6 +199,8 @@
       toast(t("toast.enterUser"), t("toast.enterUserMessage"), "error");
       return;
     }
+    const sampleQuery = onlineSampleQuery();
+    if (!sampleQuery) return;
     const selectedSource = state.source;
     const providerName = selectedSource === "all" ? "Lichess + Chess.com" : sourceLabel(selectedSource);
     setLoading(true, t("loading.searchingPlayer", {
@@ -210,7 +212,7 @@
         const combined = await combineProfilesStream({
           lichess_username: query,
           chesscom_username: query,
-        }, t("loading.combiningPlatforms"));
+        }, t("loading.combiningPlatforms"), sampleQuery);
         player = combined.dataset.player;
         if (combined.warnings.length) {
           toast(
@@ -230,7 +232,7 @@
           source: sourceLabel(player.source)
         }));
         await api(
-          `/players/${encodeURIComponent(player.source)}/${encodeURIComponent(player.external_id)}/refresh-games?max_games=50`, {
+          `/players/${encodeURIComponent(player.source)}/${encodeURIComponent(player.external_id)}/refresh-games?${sampleQuery}`, {
             method: "POST"
           });
       }
@@ -736,11 +738,13 @@
 
   async function refreshCurrentPlayer() {
     if (!["lichess", "chess.com"].includes(state.player?.source)) return;
+    const sampleQuery = onlineSampleQuery();
+    if (!sampleQuery) return;
     const button = $("#refresh-player");
     button.classList.add("spinning");
     try {
       await api(
-        `/players/${encodeURIComponent(state.player.source)}/${encodeURIComponent(state.player.external_id)}/refresh-games?max_games=50`, {
+        `/players/${encodeURIComponent(state.player.source)}/${encodeURIComponent(state.player.external_id)}/refresh-games?${sampleQuery}`, {
           method: "POST"
         });
       await loadPlayer(state.player);
@@ -759,12 +763,14 @@
       toast(t("toast.missingUsers"), t("toast.missingUsersMessage"), "error");
       return;
     }
+    const sampleQuery = onlineSampleQuery();
+    if (!sampleQuery) return;
     closeDialog("combine-dialog");
     try {
       const result = await combineProfilesStream({
         lichess_username: lichess || null,
         chesscom_username: chesscom || null,
-      }, t("loading.combiningProfiles"));
+      }, t("loading.combiningProfiles"), sampleQuery);
       state.pace = "global";
       $$("[data-pace]").forEach((button) => button.classList.toggle("active", button.dataset.pace === "global"));
       await loadPlayer(result.dataset.player, {
@@ -984,7 +990,24 @@
     return steps;
   }
 
-  async function combineProfilesStream(payload, title) {
+  function onlineSampleQuery() {
+    const selectedLimit = Number.parseInt($("#online-game-limit")?.value || "100", 10);
+    const maxGames = [50, 100, 200].includes(selectedLimit) ? selectedLimit : 100;
+    const dateFrom = $("#online-date-from")?.value || "";
+    const dateTo = $("#online-date-to")?.value || "";
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      toast(t("toast.invalidRange"), t("toast.invalidRangeMessage"), "error");
+      return null;
+    }
+    const params = new URLSearchParams({
+      max_games: String(maxGames),
+    });
+    if (dateFrom) params.set("from", dateFrom);
+    if (dateTo) params.set("to", dateTo);
+    return params.toString();
+  }
+
+  async function combineProfilesStream(payload, title, sampleQuery) {
     let steps = createCombineSteps([
       ...(payload.lichess_username ? ["lichess"] : []),
       ...(payload.chesscom_username ? ["chess.com"] : []),
@@ -993,7 +1016,7 @@
     const staged = startStagedCombineProgress(steps, title, () => liveProgress);
     paintCombineProgress(title, steps, 10);
     try {
-      return await apiNdjson("/players/combined?max_games=50&stream=true", {
+      return await apiNdjson(`/players/combined?${sampleQuery}&stream=true`, {
         method: "POST",
         body: JSON.stringify(payload),
       }, (event) => {

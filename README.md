@@ -6,6 +6,7 @@ Aplicación web de preparación ajedrecística para torneos. Convierte partidas 
 
 - Búsqueda de usuarios exactos de Lichess y Chess.com.
 - Dossier combinado para unir ambas plataformas aunque los alias sean distintos.
+- Muestra online configurable de 50, 100 o 200 partidas totales, con rango de fechas opcional y redistribución automática entre proveedores.
 - Dossier de jugador con score global, forma reciente y desglose por color.
 - Repertorio navegable por decisiones propias y respuestas del rival, además del resumen por ECO, apertura, color, frecuencia y score.
 - Selector de ritmo `global / bullet / blitz / rápida / lenta` aplicado a partidas y estadísticas; global incluye todos los ritmos estándar.
@@ -59,7 +60,9 @@ El documento técnico proponía Next.js como una tecnología orientativa. Para e
 
 El dossier permanece oculto hasta que se busca un jugador, se importa un PGN o se pulsa **Ver ejemplo ficticio**. Ese ejemplo contiene 12 PGN sintéticos atribuidos únicamente a «Jugador de muestra»: sus estadísticas son cálculos reales y deterministas sobre esas partidas, pero no describen a una persona, cuenta o torneo reales.
 
-La interfaz solicita como máximo las 100 partidas estándar más recientes de cada proveedor. El ritmo **Global** no aplica un filtro temporal; **Bullet**, **Blitz**, **Rápida** y **Lenta** muestran únicamente su categoría.
+La interfaz permite solicitar 50, 100 o 200 partidas estándar, con 100 como valor predeterminado. En un dossier combinado ese número es el máximo **total**, no un cupo independiente por proveedor: primero se reserva una parte igual para cada plataforma disponible y después se completa con las partidas recientes sobrantes de cualquiera de ellas. Así, si una fuente solo aporta 20 partidas a una muestra de 100, la otra puede aportar hasta 80; si una no aporta ninguna, la disponible puede cubrir las 100. Tras deduplicar, el conjunto nunca supera el límite elegido.
+
+Los campos opcionales **Desde** y **Hasta** restringen la descarga a un intervalo inclusivo. El límite numérico se aplica también cuando se usan fechas, por lo que un jugador con una cantidad extraordinaria de partidas dentro del periodo nunca carga más de 200. Lichess recibe directamente el intervalo y el máximo; Chess.com consulta en orden inverso solo los archivos mensuales que intersectan el periodo y filtra cada partida por su fecha exacta. El ritmo **Global** no aplica un filtro de ritmo; **Bullet**, **Blitz**, **Rápida** y **Lenta** muestran únicamente su categoría.
 
 Lichess se consulta solo con sus modalidades estándar (`ultraBullet`, `bullet`, `blitz`, `rapid`, `classical` y `correspondence`). En Chess.com se aceptan exclusivamente partidas con `rules="chess"`. La misma regla se aplica a los PGN importados: se omiten Chess960, pasapiezas, Crazyhouse, atómico, antiajedrez y cualquier partida declarada como variante o con una posición inicial no estándar. Cuando el proveedor permite contabilizarlas, la respuesta incluye un aviso con el número de partidas descartadas.
 
@@ -132,7 +135,7 @@ Las pruebas comprueban que el ejemplo sintético no se precarga ni se confunde c
 
 A fecha de esta revisión, el estado es:
 
-- **72 pruebas automatizadas superadas**.
+- **77 pruebas automatizadas superadas**.
 - Todo el backend compila correctamente con `python -m compileall api`.
 - Los 13 scripts declarados por la interfaz y el service worker pasan validación sintáctica.
 - Todos los CSS y scripts referenciados por `index.html` se sirven con código HTTP 200 y las cabeceras de seguridad previstas.
@@ -146,9 +149,9 @@ La batería emite actualmente un aviso de deprecación procedente de la integrac
 ```text
 GET  /api/v1/demo
 GET  /api/v1/players/search?q={usuario}
-POST /api/v1/players/combined
+POST /api/v1/players/combined?max_games={1..200}&from={YYYY-MM-DD}&to={YYYY-MM-DD}
 GET  /api/v1/players/{source}/{external_id}
-POST /api/v1/players/{source}/{external_id}/refresh-games
+POST /api/v1/players/{source}/{external_id}/refresh-games?max_games={1..200}&from={YYYY-MM-DD}&to={YYYY-MM-DD}
 GET  /api/v1/players/{source}/{external_id}/games
 GET  /api/v1/players/{source}/{external_id}/stats
 GET  /api/v1/players/{source}/{external_id}/stats/by-color
@@ -163,7 +166,7 @@ GET  /api/v1/datasets/{dataset_id}/games
 GET  /api/v1/datasets/{dataset_id}/stats
 ```
 
-Cada resultado estadístico declara su muestra, fuentes, ritmo y rango temporal. `GET /demo` devuelve únicamente el acceso al ejemplo ficticio, cuyos registros usan la fuente `demo` y confianza `synthetic`. `GET /fide/players/{fide_id}` incluye `rating_history`, con puntos mensuales validados para `rating`, `rapid_rating` y `blitz_rating`. La variación de una partida consulta la lista oficial actual de estándar, rápido o blitz para obtener Elo y K; el archivo comprimido se conserva temporalmente en memoria durante seis horas. El cálculo inicial consulta el historial FIDE completo de cada ID para el mes indicado y añade los dos empates virtuales contra rivales de 1800 previstos en el reglamento. `POST /datasets` crea siempre un dossier PGN independiente: no acepta fusionarlo con otro dataset. Los datasets importados se guardan únicamente en memoria y caducan por defecto a los 30 minutos.
+Cada resultado estadístico declara su muestra, fuentes, ritmo y rango temporal. Las respuestas de carga online añaden `sample_request` con el máximo solicitado, el total realmente cargado, el desglose por fuente y las fechas aplicadas. `GET /demo` devuelve únicamente el acceso al ejemplo ficticio, cuyos registros usan la fuente `demo` y confianza `synthetic`. `GET /fide/players/{fide_id}` incluye `rating_history`, con puntos mensuales validados para `rating`, `rapid_rating` y `blitz_rating`. La variación de una partida consulta la lista oficial actual de estándar, rápido o blitz para obtener Elo y K; el archivo comprimido se conserva temporalmente en memoria durante seis horas. El cálculo inicial consulta el historial FIDE completo de cada ID para el mes indicado y añade los dos empates virtuales contra rivales de 1800 previstos en el reglamento. `POST /datasets` crea siempre un dossier PGN independiente: no acepta fusionarlo con otro dataset. Los datasets importados se guardan únicamente en memoria y caducan por defecto a los 30 minutos.
 
 ## Configuración
 
@@ -180,10 +183,10 @@ Copia `.env.example` si quieres modificar:
 
 ## Seguridad al desplegar
 
-La aplicación trata nombres, eventos y cabeceras PGN como texto, aplica codificación contextual en el navegador y normaliza los campos externos antes de guardarlos temporalmente. También limita los PGN a 5 MB y 500 partidas, restringe las URLs consultadas a los proveedores previstos y envía CSP, anti-framing, `nosniff`, política de permisos y otras cabeceras defensivas. El Nginx incluido añade además límite de cuerpo y limitación básica de peticiones a la API.
+La aplicación trata nombres, eventos y cabeceras PGN como texto, aplica codificación contextual en el navegador y normaliza los campos externos antes de guardarlos temporalmente. También limita los PGN a 5 MB y 500 partidas, cada muestra online a 200 partidas y cada respuesta de Lichess o Chess.com a 12 MB; además restringe las URLs consultadas a los proveedores previstos y envía CSP, anti-framing, `nosniff`, política de permisos y otras cabeceras defensivas. El Nginx incluido añade además límite de cuerpo y limitación básica de peticiones a la API.
 
 Antes de publicar, configura `CHESSPREP_ALLOWED_HOSTS` con el dominio exacto y `CHESSPREP_CORS_ORIGINS` con el origen HTTPS real. Si no necesitas la documentación interactiva, usa `CHESSPREP_ENABLE_DOCS=false`. Termina TLS en el proxy o plataforma de despliegue y configura HSTS allí; no se incluye HSTS en el contenedor porque el entorno local funciona por HTTP.
 
-La disponibilidad de Lichess, Chess.com, FIDE e Info64 depende de sus respectivos servicios. Si una plataforma online no responde, el dossier combinado utiliza las demás que estén disponibles. Para consultar resultados OTB se exige un ID FIDE válido y cada participación de Info64 se vuelve a comprobar contra él. El ID y los resultados no proporcionan por sí solos las jugadas. La importación PGN es un flujo separado para reproducir y analizar posiciones, y no atribuye identidad FIDE al dossier creado.
+La disponibilidad de Lichess, Chess.com, FIDE e Info64 depende de sus respectivos servicios. Si una plataforma online no responde o devuelve menos partidas de las reservadas, el dossier combinado utiliza las demás que estén disponibles para completar el máximo total cuando sea posible. Para consultar resultados OTB se exige un ID FIDE válido y cada participación de Info64 se vuelve a comprobar contra él. El ID y los resultados no proporcionan por sí solos las jugadas. La importación PGN es un flujo separado para reproducir y analizar posiciones, y no atribuye identidad FIDE al dossier creado.
 
 Las llamadas a Lichess se serializan mediante un bloqueo único para todo el proceso. Después de un `429`, ninguna llamada nueva se realiza durante al menos 60 segundos o durante el `Retry-After` indicado si es mayor. El contenedor oficial ejecuta un solo proceso de Uvicorn; si el despliegue se amplía a varios procesos o réplicas, el bloqueo debe sustituirse por un coordinador compartido.

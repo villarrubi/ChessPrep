@@ -1,4 +1,4 @@
-const CACHE_NAME = "chessprep-v20260809-repertoire-moves";
+const CACHE_NAME = "chessprep-v20260809-online-sample";
 const STATIC_ASSETS = [
   "/",
   "/index.html",

@@ -2,12 +2,15 @@ import hashlib
 import io
 import json
 import tarfile
+from collections import Counter
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from api.app.main import app
 from api.app.models import FidePlayer, GameType, Info64Result, PlayerRef
 from api.app.services.pgn import parse_pgn
+from api.app.services.online_players import OnlinePlayerService
 
 
 client = TestClient(app)
@@ -35,6 +38,64 @@ def test_demo_is_synthetic_and_only_loads_after_an_explicit_action():
     assert '"toast.demoLoaded": "Ejemplo ficticio cargado"' in translations
     assert all(game["source"] == "demo" for game in games)
     assert all(game["source_confidence"] == "synthetic" for game in games)
+
+
+def test_online_search_exposes_bounded_sample_controls():
+    index = client.get("/").text
+    controller = client.get("/js/dossierController.js").text
+
+    assert 'id="online-game-limit"' in index
+    assert '<option value="100" selected>100 partidas</option>' in index
+    assert 'id="online-date-from" type="date"' in index
+    assert 'id="online-date-to" type="date"' in index
+    assert '[50, 100, 200].includes(selectedLimit)' in controller
+    assert 'params.set("from", dateFrom)' in controller
+    assert 'params.set("to", dateTo)' in controller
+
+
+def test_combined_sample_balances_and_redistributes_the_total_limit():
+    games = [
+        SimpleNamespace(
+            source="lichess",
+            date=f"2026-06-{(index % 20) + 1:02d}",
+            id=f"lichess-{index}",
+            dedupe_hash=f"lichess-{index}",
+        )
+        for index in range(20)
+    ]
+    games.extend(
+        SimpleNamespace(
+            source="chess.com",
+            date=f"2026-07-{(index % 28) + 1:02d}",
+            id=f"chesscom-{index}",
+            dedupe_hash=f"chesscom-{index}",
+        )
+        for index in range(100)
+    )
+
+    selected, duplicates = OnlinePlayerService._balanced_sample(games, 100)
+
+    assert duplicates == 0
+    assert len(selected) == 100
+    assert Counter(game.source for game in selected) == {
+        "lichess": 20,
+        "chess.com": 80,
+    }
+
+
+def test_online_sample_rejects_invalid_range_and_more_than_hard_cap():
+    invalid_range = client.post(
+        "/api/v1/players/combined?from=2026-08-02&to=2026-08-01",
+        json={"lichess_username": "sample"},
+    )
+    over_cap = client.post(
+        "/api/v1/players/combined?max_games=201",
+        json={"lichess_username": "sample"},
+    )
+
+    assert invalid_range.status_code == 422
+    assert "fecha inicial" in invalid_range.json()["detail"]
+    assert over_cap.status_code == 422
 
 
 def test_security_headers_are_applied_to_api_and_web():
@@ -131,7 +192,7 @@ def test_loader_cycles_all_pieces_without_disabling_its_timer():
     index = client.get("/").text
     script = client.get("/app.js").text
 
-    assert "/app.js?v=20260809-repertoire-moves" in index
+    assert "/app.js?v=20260809-online-sample" in index
     assert 'const LOADER_PIECES = ["♙", "♘", "♗", "♖", "♕", "♔"];' in script
     assert "const LOADER_INTERVAL_MS = 450;" in script
     assert "window.setInterval(advanceLoaderPiece, LOADER_INTERVAL_MS)" in script
@@ -147,7 +208,7 @@ def test_language_switcher_and_elo_calculator_are_available():
     assert 'id="language-button"' in index
     assert 'id="language-menu"' in index
     assert index.count('data-language="') == 5
-    assert "/i18n.js?v=20260809-repertoire-moves" in index
+    assert "/i18n.js?v=20260809-online-sample" in index
     assert 'const STORAGE_KEY = "chessprep_language";' in translations
     assert '{ code: "es"' in translations
     assert '{ code: "en"' in translations

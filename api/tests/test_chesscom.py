@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 
 from api.app.providers import chesscom
@@ -60,3 +62,41 @@ def test_chesscom_profile_and_archive_are_normalized(monkeypatch):
     assert all(game.source == "chess.com" for game in parsed.games)
     assert all(game.game_type.value == "online" for game in parsed.games)
     assert any("Chess960" in warning for warning in parsed.errors)
+
+
+def test_chesscom_filters_archives_and_games_by_date(monkeypatch):
+    requested_archives: list[str] = []
+
+    def fake_get(url, timeout=10):
+        if url.endswith("/games/archives"):
+            return {
+                "archives": [
+                    "https://api.chess.com/pub/player/sampleuser/games/2026/06",
+                    "https://api.chess.com/pub/player/sampleuser/games/2026/07",
+                    "https://api.chess.com/pub/player/sampleuser/games/2026/08",
+                ]
+            }
+        requested_archives.append(url)
+        if url.endswith("/2026/07"):
+            return {
+                "games": [
+                    {"rules": "chess", "url": "https://www.chess.com/game/live/123", "pgn": SAMPLE_PGN},
+                    {"rules": "chess", "url": "https://www.chess.com/game/live/124", "pgn": SAMPLE_PGN_2},
+                ]
+            }
+        return {"games": []}
+
+    monkeypatch.setattr(chesscom, "_get_json", fake_get)
+
+    parsed = chesscom.fetch_games(
+        "SampleUser",
+        max_games=200,
+        date_from=date(2026, 7, 31),
+        date_to=date(2026, 7, 31),
+    )
+
+    assert requested_archives == [
+        "https://api.chess.com/pub/player/sampleuser/games/2026/07"
+    ]
+    assert len(parsed.games) == 1
+    assert parsed.games[0].date == "2026-07-31"

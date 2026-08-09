@@ -1,6 +1,7 @@
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, date, datetime
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
 
@@ -63,6 +64,33 @@ def test_lichess_requests_only_standard_chess_performances(monkeypatch):
         "ultraBullet,bullet,blitz,rapid,classical,correspondence"
     ]
     assert "chess960" not in query["perfType"][0]
+
+
+def test_lichess_applies_inclusive_date_range_and_hard_cap(monkeypatch):
+    requested_path = ""
+
+    def fake_get(path, accept="application/json", timeout=8):
+        nonlocal requested_path
+        requested_path = path
+        return STANDARD_PGN.encode("utf-8")
+
+    monkeypatch.setattr(lichess, "_get", fake_get)
+
+    lichess.fetch_games(
+        "SampleUser",
+        max_games=999,
+        date_from=date(2026, 8, 1),
+        date_to=date(2026, 8, 31),
+    )
+    query = parse_qs(urlsplit(requested_path).query)
+
+    assert query["max"] == ["200"]
+    assert query["since"] == [
+        str(int(datetime(2026, 8, 1, tzinfo=UTC).timestamp() * 1000))
+    ]
+    assert query["until"] == [
+        str(int(datetime(2026, 8, 31, 23, 59, 59, 999999, tzinfo=UTC).timestamp() * 1000))
+    ]
 
 
 def test_lichess_serializes_requests_globally(monkeypatch):

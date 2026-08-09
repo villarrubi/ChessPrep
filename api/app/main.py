@@ -52,9 +52,11 @@ online_player_service = OnlinePlayerService(
             source="lichess",
             label="Lichess",
             get_player=lambda username: get_lichess_player(username),
-            fetch_games=lambda username, max_games: fetch_lichess_games(
+            fetch_games=lambda username, max_games, date_from, date_to: fetch_lichess_games(
                 username,
                 max_games=max_games,
+                date_from=date_from,
+                date_to=date_to,
             ),
             unavailable_error=LichessUnavailable,
         ),
@@ -62,9 +64,11 @@ online_player_service = OnlinePlayerService(
             source="chess.com",
             label="Chess.com",
             get_player=lambda username: get_chesscom_player(username),
-            fetch_games=lambda username, max_games: fetch_chesscom_games(
+            fetch_games=lambda username, max_games, date_from, date_to: fetch_chesscom_games(
                 username,
                 max_games=max_games,
+                date_from=date_from,
+                date_to=date_to,
             ),
             unavailable_error=ChessComUnavailable,
         ),
@@ -114,7 +118,7 @@ def get_dataset_or_404(source: str, external_id: str):
 
 def create_combined_player_dataset(
     payload: CombinedPlayerCreate,
-    max_games: int = 30,
+    max_games: int = 100,
 ):
     return online_player_service.combine(payload, max_games)
 

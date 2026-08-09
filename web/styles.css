@@ -161,6 +161,7 @@ svg:not(.board-arrows) { width: 1.2em; fill: none; stroke: currentColor; stroke-
 .search-mode-tabs > button { min-width: 0; min-height: 57px; padding: 7px 14px; border: 0; border-radius: 8px; background: transparent; color: #68726d; display: flex; align-items: center; gap: 11px; text-align: left; cursor: pointer; transition: .18s ease; }.search-mode-tabs > button:hover { background: rgba(255,255,255,.48); color: var(--ink); }.search-mode-tabs > button.active { background: var(--paper); color: var(--ink); box-shadow: 0 5px 15px rgba(30,43,37,.09); }.search-mode-tabs > button > span:last-child { min-width: 0; display: flex; flex-direction: column; }.search-mode-tabs strong { font-family: var(--serif); font-size: 13px; }.search-mode-tabs small { margin-top: 1px; color: #89918d; font-size: 7px; font-weight: 700; }
 .search-mode-symbol { width: 29px; height: 29px; flex: 0 0 29px; border-radius: 7px; background: #ded9ce; display: grid; place-items: center; color: var(--forest); font-size: 17px; }.search-mode-symbol.online { display: flex; align-items: center; justify-content: center; }.search-mode-symbol.online i { width: 8px; height: 8px; border-radius: 50%; background: #a27b5c; }.search-mode-symbol.online i + i { margin-left: -2px; background: #81a65e; box-shadow: 0 0 0 2px #ded9ce; }.search-mode-tabs button.active .search-mode-symbol { background: var(--forest); color: white; }.search-mode-tabs button.active .search-mode-symbol.online i + i { box-shadow: 0 0 0 2px var(--forest); }
 .search-mode-panel { width: 100%; max-width: 680px; height: 150px; padding-top: 10px; }
+#search-panel-online { height: 205px; }
 .search-mode-note { min-height: 24px; margin: 8px 2px 0; color: #7a837e; font-size: 9px; line-height: 1.5; }.search-mode-note .text-button { margin-left: 3px; font-size: 9px; }
 .provider-switch { max-width: 680px; margin: 8px 0 0; display: flex; align-items: center; gap: 6px; }
 .provider-switch button { height: 31px; padding: 0 12px; border: 1px solid transparent; border-radius: 16px; background: transparent; color: #6f7974; display: inline-flex; align-items: center; gap: 7px; font-size: 9px; font-weight: 800; cursor: pointer; transition: .18s ease; }
@@ -169,6 +170,15 @@ svg:not(.board-arrows) { width: 1.2em; fill: none; stroke: currentColor; stroke-
 .source-dot, .dual-dots i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 .source-dot.lichess, .dual-dots i:first-child { background: #a27b5c; }.source-dot.chesscom, .dual-dots i:last-child { background: #81a65e; }
 .dual-dots { display: inline-flex; }.dual-dots i + i { margin-left: -2px; box-shadow: 0 0 0 2px var(--forest); }
+.online-sample-controls { margin-top: 8px; display: grid; grid-template-columns: 150px minmax(145px, 1fr) minmax(145px, 1fr); gap: 7px; }
+.online-sample-field { min-width: 0; height: 43px; padding: 5px 9px 4px; border: 1px solid var(--line); border-radius: 7px; background: rgba(255,255,255,.65); display: flex; flex-direction: column; justify-content: center; }
+.online-sample-field:focus-within { border-color: var(--forest-2); box-shadow: 0 0 0 3px rgba(28,57,50,.07); background: white; }
+.online-sample-field > span { color: #7e8782; font-size: 7px; font-weight: 900; letter-spacing: .55px; line-height: 1; text-transform: uppercase; }
+.online-sample-field select, .online-sample-field input { width: 100%; min-width: 0; height: 25px; padding: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 10px; font-weight: 700; }
+.online-sample-field input { color-scheme: light; }
+.online-sample-footer { margin-top: 6px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.online-sample-footer .search-mode-note { min-height: 0; margin: 0; flex: 0 0 auto; }
+.online-sample-help { margin: 0; color: #858e89; font-size: 8px; line-height: 1.5; }
 .hero-actions { margin-top: 19px; display: flex; align-items: center; gap: 30px; }
 .text-button { padding: 0; border: 0; background: none; color: var(--forest); font-size: 12px; font-weight: 800; cursor: pointer; border-bottom: 1px solid currentColor; }
 .hero-note { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; color: #737d78; }
@@ -848,6 +858,9 @@ footer a:hover { color: white; }
   .provider-switch { overflow-x: auto; padding-bottom: 2px; }.provider-switch button { flex: 0 0 auto; }
   .search-form { padding: 6px; flex-wrap: wrap; }.search-icon { width: 39px; }.search-form input { min-width: calc(100% - 39px); }.search-form .button { width: 100%; margin-top: 5px; }
   .search-mode-tabs > button { padding: 7px 9px; }.search-mode-symbol { display: none; }.search-mode-tabs strong { font-size: 12px; }.search-mode-panel { height: 205px; }
+  #search-panel-online { height: 320px; }
+  .online-sample-controls { grid-template-columns: 1fr 1fr; }.online-limit-field { grid-column: 1 / -1; }
+  .online-sample-footer { align-items: flex-start; flex-direction: column; gap: 5px; }
   .elo-dialog { padding: 24px 14px; }.elo-dialog h2 { font-size: 31px; }.elo-tabs { width: 100%; }.elo-tabs button { min-width: 0; flex: 1; }.elo-discipline-field { width: 100%; }.elo-initial-toolbar { align-items: stretch; flex-direction: column; }.elo-initial-toolbar label { width: 100%; flex-basis: auto; }.elo-initial-row { grid-template-columns: 1fr; }.elo-initial-row .elo-result-select, .elo-initial-row .elo-period { grid-row: auto; }.elo-initial-row .elo-period { margin-right: 38px; }.elo-initial-row .elo-remove-row { grid-column: 1; grid-row: 4; justify-self: end; margin-top: -42px; }.elo-initial-actions { align-items: stretch; flex-direction: column; }.elo-initial-actions .button { width: 100%; }.elo-initial-summary { grid-template-columns: 1fr 1fr; }.elo-result-head { align-items: flex-start; flex-direction: column; }.elo-result th, .elo-result td { padding: 9px 8px; }.elo-opponent-list li { grid-template-columns: 1fr auto; }.elo-opponent-list li span:last-child { grid-column: 1 / -1; }
   .hero-actions { align-items: flex-start; flex-direction: column; gap: 14px; }.hero-card { min-height: 450px; }.mini-board-wrap { transform: scale(.88); }
   .section-heading-row { align-items: flex-start; flex-direction: column; }.mode-switch { width: 100%; }.mode-switch button { flex: 1; padding: 0 6px; }

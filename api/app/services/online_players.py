@@ -4,6 +4,7 @@ import hashlib
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 from api.app.errors import (
@@ -23,6 +24,7 @@ from api.app.services.pgn import ParseResult
 from api.app.services.store import DatasetStore
 
 ProgressCallback = Callable[[dict[str, Any]], None]
+MAX_ONLINE_SAMPLE_GAMES = 200
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,7 +34,10 @@ class OnlineProvider:
     source: str
     label: str
     get_player: Callable[[str], PlayerRef]
-    fetch_games: Callable[[str, int | None], ParseResult]
+    fetch_games: Callable[
+        [str, int | None, date | None, date | None],
+        ParseResult,
+    ]
     unavailable_error: type[Exception]
 
 
@@ -107,7 +112,7 @@ class OnlinePlayerService:
             raise NotFoundError("No se encontró el conjunto temporal.")
         try:
             player = provider.get_player(external_id)
-            parsed = provider.fetch_games(player.username, None)
+            parsed = provider.fetch_games(player.username, None, None, None)
         except LookupError as exc:
             raise NotFoundError(str(exc)) from exc
         except provider.unavailable_error as exc:
@@ -122,6 +127,8 @@ class OnlinePlayerService:
         source: str,
         external_id: str,
         max_games: int,
+        date_from: date | None = None,
+        date_to: date | None = None,
     ) -> dict[str, object]:
         if source == "demo":
             return {
@@ -129,12 +136,18 @@ class OnlinePlayerService:
                 "warnings": [],
                 "duplicates": 0,
             }
+        self._validate_period(date_from, date_to)
         provider = self._providers.get(source)
         if provider is None:
             raise BadRequestError("El proveedor indicado no admite actualización.")
         try:
             player = provider.get_player(external_id)
-            parsed = provider.fetch_games(player.username, max_games)
+            parsed = provider.fetch_games(
+                player.username,
+                self._safe_sample_size(max_games),
+                date_from,
+                date_to,
+            )
         except LookupError as exc:
             raise NotFoundError(str(exc)) from exc
         except provider.unavailable_error as exc:
@@ -152,7 +165,11 @@ class OnlinePlayerService:
         payload: CombinedPlayerCreate,
         max_games: int,
         on_progress: ProgressCallback | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
     ) -> tuple[TemporaryDataset, list[str], int]:
+        self._validate_period(date_from, date_to)
+        target_games = self._safe_sample_size(max_games)
         handles = {
             "lichess": payload.lichess_username,
             "chess.com": payload.chesscom_username,
@@ -180,7 +197,15 @@ class OnlinePlayerService:
             provider = self._providers[source]
             try:
                 player = provider.get_player(handle)
-                parsed = provider.fetch_games(player.username, max_games)
+                # Fetch up to the total target from every source. This leaves
+                # enough candidates to fill another platform's unused share
+                # without making a second provider request.
+                parsed = provider.fetch_games(
+                    player.username,
+                    target_games,
+                    date_from,
+                    date_to,
+                )
                 return source, player, parsed, None
             except (LookupError, provider.unavailable_error) as exc:
                 return source, None, None, f"{provider.label}: {exc}"
@@ -230,10 +255,7 @@ class OnlinePlayerService:
             raise ValidationError(detail)
 
         emit({"type": "merge", "status": "loading"})
-        unique_games = {}
-        for game in games:
-            unique_games.setdefault(game.dedupe_hash, game)
-        duplicates = len(games) - len(unique_games)
+        selected_games, duplicates = self._balanced_sample(games, target_games)
         identifier_source = "|".join(
             value.strip().casefold()
             for value in handles.values()
@@ -266,13 +288,81 @@ class OnlinePlayerService:
             ),
             game_type=GameType.ONLINE,
         )
-        dataset = self._store.create(combined_player, list(unique_games.values()))
+        dataset = self._store.create(combined_player, selected_games)
         if len(players) < requested:
             warnings.append(
                 "El dossier se creó con las plataformas que sí estaban disponibles."
             )
         emit({"type": "merge", "status": "ready", "games": len(dataset.games)})
         return dataset, warnings, duplicates
+
+    @staticmethod
+    def _safe_sample_size(value: int) -> int:
+        return min(max(value, 1), MAX_ONLINE_SAMPLE_GAMES)
+
+    @staticmethod
+    def _validate_period(
+        date_from: date | None,
+        date_to: date | None,
+    ) -> None:
+        if date_from and date_to and date_from > date_to:
+            raise ValidationError(
+                "La fecha inicial no puede ser posterior a la fecha final."
+            )
+
+    @staticmethod
+    def _balanced_sample(games: list, target_games: int) -> tuple[list, int]:
+        unique_games = {}
+        for game in games:
+            unique_games.setdefault(game.dedupe_hash, game)
+        duplicates = len(games) - len(unique_games)
+
+        by_source: dict[str, list] = {}
+        for game in unique_games.values():
+            by_source.setdefault(game.source, []).append(game)
+        for source_games in by_source.values():
+            source_games.sort(
+                key=lambda game: (game.date or "", game.id),
+                reverse=True,
+            )
+
+        available_sources = [
+            source
+            for source in ("lichess", "chess.com")
+            if by_source.get(source)
+        ]
+        available_sources.extend(
+            source
+            for source in sorted(by_source)
+            if source not in available_sources
+        )
+        if not available_sources:
+            return [], duplicates
+
+        quota = target_games // len(available_sources)
+        selected = []
+        selected_hashes: set[str] = set()
+        leftovers = []
+        for source in available_sources:
+            source_games = by_source[source]
+            reserved = source_games[:quota]
+            selected.extend(reserved)
+            selected_hashes.update(game.dedupe_hash for game in reserved)
+            leftovers.extend(source_games[quota:])
+
+        leftovers.sort(
+            key=lambda game: (game.date or "", game.id),
+            reverse=True,
+        )
+        for game in leftovers:
+            if len(selected) >= target_games:
+                break
+            if game.dedupe_hash in selected_hashes:
+                continue
+            selected.append(game)
+            selected_hashes.add(game.dedupe_hash)
+
+        return selected[:target_games], duplicates
 
     def _selected_providers(self, source: str) -> tuple[OnlineProvider, ...]:
         if source == "all":

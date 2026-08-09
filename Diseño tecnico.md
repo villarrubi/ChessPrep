@@ -194,6 +194,8 @@ class RawGame(BaseModel):
 
 **Regla de modalidad:** solo se normaliza ajedrez estándar. Lichess se limita a ritmos estándar, Chess.com exige `rules="chess"` y el parser PGN descarta variantes o posiciones iniciales no estándar. Bullet se conserva como ritmo, no como variante.
 
+**Política de muestra online:** la interfaz ofrece 50, 100 o 200 partidas, con 100 por defecto y 200 como tope duro aunque se indique un intervalo temporal. `max_games` representa el objetivo total del dossier combinado. Cada proveedor puede devolver candidatos hasta ese objetivo; después de deduplicar, el servicio reserva una cuota igual para las fuentes disponibles y rellena cualquier hueco con sus sobrantes más recientes. De este modo, una distribución 20/80 o 0/100 sigue formando una muestra de 100 cuando existen suficientes partidas. Los parámetros inclusivos `from` y `to` se trasladan a Lichess; en Chess.com sirven para descartar archivos mensuales fuera del periodo y filtrar las partidas del resto por fecha exacta. Cada respuesta externa queda limitada a 12 MB.
+
 **Orden de prioridad futura para ampliar OTB:** fuentes con API o licencia clara → bases públicas descargables → fallbacks web revisados jurídicamente.
 
 Los proveedores OTB sin API pública se tratan como fallback de baja frecuencia, no como sync masivo.
@@ -295,8 +297,9 @@ Prefijo: `/api/v1`.
 ```
 # Jugador y partidas
 GET  /api/v1/players/search?q=...&source=...
+POST /api/v1/players/combined?max_games=1..200&from=YYYY-MM-DD&to=YYYY-MM-DD&stream=false
 GET  /api/v1/players/{source}/{external_id}
-POST /api/v1/players/{source}/{external_id}/refresh-games
+POST /api/v1/players/{source}/{external_id}/refresh-games?max_games=1..200&from=YYYY-MM-DD&to=YYYY-MM-DD
 GET  /api/v1/players/{source}/{external_id}/games?mode=&color=&eco=&from=&to=
 GET  /api/v1/games/{source}/{external_id}         # PGN + metadatos para el visor
 GET  /api/v1/games/{source}/{external_id}/moves   # opcional: lista de SAN/FEN
@@ -327,6 +330,8 @@ POST /api/v1/auth/login | logout | me
 GET  /api/v1/players/{source}/{external_id}/stats/pieces
 GET  /api/v1/games/{source}/{external_id}/engine-analysis
 ```
+
+Las cargas combinadas y las actualizaciones de una sola fuente devuelven `sample_request`, con `maximum`, `loaded`, `by_source`, `from` y `to`, para que el cliente pueda mostrar y auditar la muestra realmente utilizada.
 
 CORS: orígenes explícitos; ideal mismo sitio vía reverse proxy (`/api` detrás del mismo dominio). Las cookies de sesión quedan para una fase posterior con cuentas.
 
