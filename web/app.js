@@ -470,7 +470,7 @@ function init() {
     toast,
     openDialog,
     closeDialog,
-    openGame: (source, gameId) => viewerController.open(source, gameId),
+    openGame: (source, gameId, options) => viewerController.open(source, gameId, options),
     t,
     currentLocale,
     countLabel,

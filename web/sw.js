@@ -1,4 +1,4 @@
-const CACHE_NAME = "chessprep-v20260809-ui-controls";
+const CACHE_NAME = "chessprep-v20260810-search-fixes";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
@@ -14,6 +14,7 @@ const STATIC_ASSETS = [
   "/js/gameAnalysis.js",
   "/js/gameViewerController.js",
   "/js/moveQuality.js",
+  "/js/playerEngineProfile.js",
   "/js/otbController.js",
   "/js/pgnImportController.js",
   "/js/registerServiceWorker.js",
@@ -82,26 +83,15 @@ function offlineApiResponse() {
   );
 }
 
-// Interceptar peticiones: estrategia cache-first para estáticos, network-first para API
+// Interceptar peticiones: los datos de API nunca entran en Cache Storage.
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // Peticiones a la API: network-first; only GET responses may be cached.
+  // Peticiones a la API: red directa sin fallback persistente de datos.
   if (url.pathname.startsWith("/api/")) {
     event.respondWith(
       fetch(event.request)
-        .then((response) => {
-          putInCache(event.request, response);
-          return response;
-        })
-        .catch(() => {
-          if (!canCacheRequest(event.request)) {
-            return offlineApiResponse();
-          }
-          return caches.match(event.request).then((cachedResponse) => {
-            return cachedResponse || offlineApiResponse();
-          });
-        })
+        .catch(() => offlineApiResponse())
     );
     return;
   }

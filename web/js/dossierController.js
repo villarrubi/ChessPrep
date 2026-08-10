@@ -27,6 +27,7 @@
   let $;
   let $$;
   let PIECES;
+  let playerEngineProfile;
 
   class DossierController {
     constructor(dependencies) {
@@ -54,6 +55,9 @@
       $ = dependencies.$;
       $$ = dependencies.$$;
       PIECES = dependencies.pieces;
+      playerEngineProfile = new global.PlayerEngineProfileController({
+        loadGame: (game) => api(`/games/${encodeURIComponent(game.source)}/${encodeURIComponent(game.id)}`),
+      });
     }
 
     bindEvents() {
@@ -67,6 +71,8 @@
           renderRepertoire();
         });
       });
+      bindRovingTabs('[data-search-mode]');
+      bindRovingTabs('[data-repertoire-view]');
       $$('[data-decision-color]').forEach((button) => {
         button.addEventListener("click", () => {
           state.decisionColor = button.dataset.decisionColor;
@@ -105,6 +111,8 @@
       });
       $("#open-combine").addEventListener("click", () => openDialog("combine-dialog"));
       $("#submit-combine").addEventListener("click", submitCombinedProfiles);
+      $("#profile-engine-toggle").addEventListener("click", togglePlayerEngineProfile);
+      $("#profile-engine-loading-toggle").addEventListener("click", togglePlayerEngineProfile);
     }
 
     loadPlayer(player, options) {
@@ -209,7 +217,7 @@
     try {
       let player;
       if (selectedSource === "all") {
-        const combined = await combineProfilesStream({
+        const combined = await combineProfiles({
           lichess_username: query,
           chesscom_username: query,
         }, t("loading.combiningPlatforms"), sampleQuery);
@@ -255,6 +263,7 @@
       const active = button.dataset.searchMode === mode;
       button.classList.toggle('active', active);
       button.setAttribute('aria-selected', String(active));
+      button.tabIndex = active ? 0 : -1;
     });
     $('#search-panel-online').hidden = mode !== 'online';
     $('#search-panel-otb').hidden = mode !== 'otb';
@@ -288,6 +297,12 @@
   }
 
   function renderAll() {
+    const sampleKey = [
+      state.datasetId || state.player?.external_id || "sample",
+      state.pace,
+      ...state.games.map((game) => `${game.source}:${game.id}`),
+    ].join("|");
+    playerEngineProfile.setSample(state.games, sampleKey);
     renderPlayer();
     renderMetrics();
     renderRepertoire();
@@ -367,20 +382,337 @@
   }
 
   function renderRepertoire() {
-    const decisionsVisible = state.repertoireView !== "openings";
-    state.repertoireView = decisionsVisible ? "decisions" : "openings";
-    $("#decision-map-view").hidden = !decisionsVisible;
-    $("#openings-table-view").hidden = decisionsVisible;
-    $("#repertoire-title").textContent = t(
-      decisionsVisible ? "repertoire.decisionMap" : "openings.title"
-    );
+    const validViews = new Set(["decisions", "openings", "analysis"]);
+    if (!validViews.has(state.repertoireView)) state.repertoireView = "decisions";
+    $("#decision-map-view").hidden = state.repertoireView !== "decisions";
+    $("#openings-table-view").hidden = state.repertoireView !== "openings";
+    $("#player-analysis-view").hidden = state.repertoireView !== "analysis";
+    const titleKey = {
+      decisions: "repertoire.decisionMap",
+      openings: "openings.title",
+      analysis: "profile.title",
+    }[state.repertoireView];
+    $("#repertoire-title").textContent = t(titleKey);
     $$('[data-repertoire-view]').forEach((button) => {
       const active = button.dataset.repertoireView === state.repertoireView;
       button.classList.toggle("active", active);
       button.setAttribute("aria-selected", String(active));
+      button.tabIndex = active ? 0 : -1;
     });
-    if (decisionsVisible) renderDecisionMap();
-    else renderOpenings();
+    $("#player-analysis-view").closest(".analysis-grid")?.classList.toggle(
+      "analysis-focus",
+      state.repertoireView === "analysis",
+    );
+    if (state.repertoireView === "decisions") renderDecisionMap();
+    else if (state.repertoireView === "openings") renderOpenings();
+    else renderPlayerProfile();
+  }
+
+  function profileConfidenceClass(level) {
+    return ({ alta: "high", media: "medium", baja: "low" })[level] || "low";
+  }
+
+  function renderProfileFindings(selector, findings) {
+    $(selector).innerHTML = (findings || []).map((finding) => `
+      <article class="profile-finding-item">
+        <div class="profile-finding-title"><h5>${escapeHtml(finding.title)}</h5>${finding.confidence ? `<span>${escapeHtml(finding.confidence)}</span>` : ""}</div>
+        <p>${escapeHtml(finding.text)}</p>
+        ${(finding.evidence_game_ids || []).length ? `<button type="button" class="profile-evidence-games" data-profile-game-ids="${escapeHtml(finding.evidence_game_ids.join(","))}" data-profile-label="${escapeHtml(finding.title)}">${escapeHtml(t("profile.viewGames"))}</button>` : ""}
+      </article>
+    `).join("");
+    $$(".profile-evidence-games", $(selector)).forEach((button) => {
+      button.addEventListener("click", () => selectProfileGames(
+        button.dataset.profileGameIds.split(",").filter(Boolean),
+        button.dataset.profileLabel,
+      ));
+    });
+  }
+
+  function renderPlayerProfile() {
+    const profile = state.stats?.player_profile;
+    if (!profile) {
+      $("#player-analysis-view").innerHTML = `<div class="decision-empty"><strong>${escapeHtml(t("profile.emptyTitle"))}</strong><span>${escapeHtml(t("profile.emptyText"))}</span></div>`;
+      return;
+    }
+
+    const confidence = $("#profile-confidence");
+    confidence.className = `profile-confidence ${profileConfidenceClass(profile.confidence?.level)}`;
+    confidence.textContent = t("profile.confidence", {
+      level: profile.confidence?.level || t("profile.low"),
+      usable: profile.confidence?.usable_games || 0,
+      sample: profile.confidence?.sample_games || 0,
+    });
+    confidence.title = profile.confidence?.text || "";
+    $("#profile-headline").textContent = profile.headline;
+    $("#profile-descriptors").innerHTML = (profile.descriptors || [])
+      .filter((descriptor) => !/^\d/.test(descriptor))
+      .map((descriptor) => `<span>${escapeHtml(descriptor)}</span>`).join("");
+    $("#profile-narrative").innerHTML = (profile.narrative || [])
+      .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
+    $("#profile-sample-context").innerHTML = [
+      `${state.stats.sample_size} ${countLabel(state.stats.sample_size)}`,
+      paceLabel(state.pace),
+      shortRange(state.stats.date_range),
+      state.stats.sources.map(sourceLabel).join(" + "),
+    ].filter(Boolean).map((item) => `<span>${escapeHtml(item)}</span>`).join("");
+    renderProfileTakeaways(profile, playerEngineProfile.getSnapshot());
+    renderProfileOpenings(profile);
+
+    renderPreparationPlan(profile.preparation_plan || [], playerEngineProfile.getSnapshot().report.plan || []);
+    renderEngineProfile(playerEngineProfile.getSnapshot());
+  }
+
+  function firstOpeningChoices(color, actor) {
+    const map = state.stats?.opening_decisions?.[color];
+    if (!map?.games) return [];
+    const firstActor = color === "white" ? "player" : "opponent";
+    const edges = actor === firstActor ? (map.roots || []) : (map.roots || []).flatMap((root) =>
+      map.nodes?.[root.node_id]?.children || []);
+    const grouped = new Map();
+    edges.forEach((edge) => {
+      const node = map.nodes?.[edge.node_id];
+      if (!node || node.actor !== actor) return;
+      const move = edge.moves?.[0]?.move || node.moves?.[0]?.move || "";
+      const key = `${move}|${node.opening || node.eco || node.id}`;
+      const current = grouped.get(key) || {
+        move,
+        opening: node.opening || node.eco || "Continuación sin clasificar",
+        games: 0,
+      };
+      current.games += Number(edge.games) || 0;
+      grouped.set(key, current);
+    });
+    return [...grouped.values()]
+      .sort((a, b) => b.games - a.games || a.opening.localeCompare(b.opening))
+      .slice(0, 3)
+      .map((item) => ({ ...item, share: Math.round(item.games / map.games * 100) }));
+  }
+
+  function renderOpeningChoiceList(items) {
+    return items.length ? `<ul>${items.map((item) => `
+      <li><strong>${escapeHtml(item.move || item.opening)}</strong><span>${escapeHtml(item.opening)}</span><small>${item.games} ${escapeHtml(countLabel(item.games))} · ${item.share}%</small></li>
+    `).join("")}</ul>` : `<p class="profile-opening-empty">No hay suficientes jugadas clasificadas.</p>`;
+  }
+
+  function renderProfileOpenings(profile) {
+    const openingsByColor = Object.fromEntries((profile.openings || []).map((item) => [item.color, item]));
+    $("#profile-openings").innerHTML = ["white", "black"].map((color) => {
+      const colorLabel = color === "white" ? t("filter.white") : t("filter.black");
+      const ownLabel = color === "white" ? "El jugador empieza con" : "El jugador responde con";
+      const rivalLabel = color === "white" ? "Los rivales responden con" : "Los rivales le plantean";
+      const ownChoices = firstOpeningChoices(color, "player");
+      const rivalChoices = firstOpeningChoices(color, "opponent");
+      const sample = openingsByColor[color];
+      const resultingOpenings = (sample?.top_openings || []).map((item) => `
+        <li><strong>${escapeHtml(item.eco || "—")}</strong><span>${escapeHtml(item.opening)}</span><small>${item.games} ${escapeHtml(countLabel(item.games))} · ${formatNumber(item.share_pct)}%</small></li>
+      `).join("") || `<li class="profile-opening-empty">${escapeHtml(t("openings.none"))}</li>`;
+      const bookMoves = (Number(sample?.average_book_ply) || 0) / 2;
+      const bookReading = !sample?.games ? "" : bookMoves >= 9 ?
+        "Las partidas suelen alcanzar ramas ECO relativamente profundas antes de desviarse." : bookMoves < 5 ?
+        "Las partidas se separan pronto de las ramas ECO reconocidas; eso puede ser una elección propia, una respuesta rival o una transposición." :
+        "Las partidas siguen un recorrido ECO intermedio antes de entrar en posiciones menos clasificadas.";
+      return `<article class="profile-opening-card profile-opening-agency">
+        <div class="profile-opening-head"><span class="color-pill ${color}"><i></i>${escapeHtml(colorLabel)}</span><strong>${sample?.games || 0} ${escapeHtml(countLabel(sample?.games || 0))}</strong></div>
+        <section class="profile-opening-side player-choice"><span>${escapeHtml(ownLabel)}</span>${renderOpeningChoiceList(ownChoices)}</section>
+        <section class="profile-opening-side opponent-choice"><span>${escapeHtml(rivalLabel)}</span>${renderOpeningChoiceList(rivalChoices)}</section>
+        <section class="profile-opening-side resulting-choice"><span>Posiciones que acaban apareciendo</span><p class="profile-opening-reading">${escapeHtml(bookReading)}</p><ul>${resultingOpenings}</ul></section>
+      </article>`;
+    }).join("");
+  }
+
+  function renderProfileTakeaways(profile, snapshot) {
+    const choices = (snapshot.report.styleChoices || []).filter((choice) => choice.opportunities >= 8);
+    const pronouncedChoices = choices.filter((choice) => choice.percentage >= 65 || choice.percentage <= 35);
+    const styleReady = snapshot.status === "complete";
+    const strongestChoice = [...pronouncedChoices].sort((a, b) =>
+      (Math.abs(b.percentage - 50) * Math.sqrt(b.opportunities)) -
+      (Math.abs(a.percentage - 50) * Math.sqrt(a.opportunities)))[0];
+
+    if (styleReady) {
+      $("#profile-headline").textContent = snapshot.report.styleHeadline;
+      $("#profile-narrative").innerHTML = (snapshot.report.styleNarrative || []).slice(0, 2)
+        .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
+      $("#profile-takeaway-style").textContent = snapshot.report.styleHeadline;
+      $("#profile-takeaway-style-detail").textContent = strongestChoice ?
+        strongestChoice.summary : "No aparece una tendencia lo bastante repetida como para convertirla en una etiqueta.";
+    } else {
+      $("#profile-headline").textContent = profile.headline;
+      const introduction = profile.analysed_games ? [t("profile.preAnalysisNarrative")] : (profile.narrative || []);
+      $("#profile-narrative").innerHTML = introduction
+        .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
+      $("#profile-takeaway-style").textContent = t("profile.stylePending");
+      $("#profile-takeaway-style-detail").textContent = t("profile.stylePendingDetail");
+    }
+
+    const whiteChoice = firstOpeningChoices("white", "player")[0];
+    const blackChoice = firstOpeningChoices("black", "player")[0];
+    $("#profile-takeaway-opening").textContent = [
+      whiteChoice ? `Con blancas: ${whiteChoice.move || whiteChoice.opening}` : "",
+      blackChoice ? `Con negras: ${blackChoice.move || blackChoice.opening}` : "",
+    ].filter(Boolean).join(" · ") || t("openings.none");
+    $("#profile-takeaway-opening-detail").textContent = "Más abajo se separan sus elecciones de las respuestas de sus rivales.";
+
+    const favourable = snapshot.report.strengths?.[0] || profile.patterns?.[0];
+    $("#profile-takeaway-strength").textContent = favourable?.title || t("profile.noClearPattern");
+    $("#profile-takeaway-strength-detail").textContent = favourable ?
+      (snapshot.report.strengths?.[0] ? t("profile.enginePatternDetail") : t("profile.samplePatternDetail")) : "";
+
+    const target = snapshot.report.watchouts?.[0] || profile.questions?.[0];
+    $("#profile-takeaway-target").textContent = target?.title || t("profile.noClearTarget");
+    $("#profile-takeaway-target-detail").textContent = target ?
+      (snapshot.report.watchouts?.[0] ? t("profile.engineTargetDetail") : t("profile.sampleTargetDetail")) : "";
+  }
+
+  function renderPreparationPlan(observed, objective) {
+    const combined = (objective.length ? [...objective, ...observed] : observed).slice(0, 5);
+    $("#profile-preparation-plan").innerHTML = combined.map((item, index) => `
+      <article class="profile-plan-item">
+        <span class="profile-plan-number">${String(index + 1).padStart(2, "0")}</span>
+        <div><h5>${escapeHtml(item.title)}</h5><p>${escapeHtml(item.text)}</p></div>
+      </article>
+    `).join("") || `<p class="profile-plan-empty">${escapeHtml(t("profile.planEmpty"))}</p>`;
+  }
+
+  function renderEngineProfile(snapshot) {
+    const progress = snapshot.status === "complete" ? 100 : snapshot.progress;
+    const progressNode = $("#profile-engine-progress");
+    progressNode.setAttribute("aria-valuenow", String(progress));
+    progressNode.setAttribute("aria-busy", String(snapshot.running));
+    $("#profile-engine-progress-bar").style.width = `${progress}%`;
+    const statusMessages = {
+      idle: t("profile.engineIdle"),
+      running: t("profile.engineRunning", {
+        gamesDone: snapshot.gamesDone,
+        gamesTotal: snapshot.gamesTotal,
+        movesDone: snapshot.movesDone,
+        movesTotal: snapshot.movesTotal,
+      }),
+      paused: t("profile.enginePaused", { movesDone: snapshot.movesDone, movesTotal: snapshot.movesTotal }),
+      complete: t("profile.engineComplete", { games: snapshot.gamesDone, moves: snapshot.movesDone }),
+      error: t("profile.engineError", { error: snapshot.error }),
+    };
+    $("#profile-engine-status").textContent = statusMessages[snapshot.status] || statusMessages.idle;
+    const toggle = $("#profile-engine-toggle");
+    toggle.disabled = snapshot.gamesTotal === 0;
+    toggle.hidden = snapshot.status === "complete";
+    toggle.textContent = t("profile.startEngine");
+
+    const loadingStates = new Set(["running", "paused", "error"]);
+    const showLoading = loadingStates.has(snapshot.status);
+    $("#profile-analysis-loading").hidden = !showLoading;
+    $("#profile-analysis-content").hidden = showLoading;
+    const loadingToggle = $("#profile-engine-loading-toggle");
+    const pausing = snapshot.status === "paused" && snapshot.running;
+    loadingToggle.disabled = pausing;
+    loadingToggle.textContent = pausing ? "Pausando…" : snapshot.status === "paused" ?
+      t("profile.resume") : snapshot.running ? t("profile.pause") : "Reintentar análisis";
+
+    const complete = snapshot.status === "complete";
+    $("#profile-engine-results").hidden = !complete;
+    if (!complete) return;
+
+    const visibleChoices = (snapshot.report.styleChoices || [])
+      .filter((choice) => choice.opportunities >= 8 && (choice.percentage >= 65 || choice.percentage <= 35))
+      .sort((a, b) => Math.abs(b.percentage - 50) - Math.abs(a.percentage - 50))
+      .slice(0, 4);
+    $("#profile-style-choices").innerHTML = visibleChoices.length ? visibleChoices.map((choice) => {
+      const direction = choice.percentage >= 65 ? "preferred" : choice.percentage <= 35 ? "avoided" : "balanced";
+      const plainStatus = direction === "preferred" ? t("profile.usuallyChooses") :
+        direction === "avoided" ? t("profile.usuallyAvoids") : t("profile.noFixedPreference");
+      return `<article class="profile-style-choice ${direction}">
+        <span class="profile-style-marker" aria-hidden="true">${direction === "preferred" ? "→" : direction === "avoided" ? "↘" : "↔"}</span>
+        <div class="profile-style-choice-copy"><small>${escapeHtml(plainStatus)}</small><h6>${escapeHtml(choice.name)}</h6><p>${escapeHtml(choice.summary)}</p></div>
+      </article>`;
+    }).join("") : `<div class="profile-style-empty"><span aria-hidden="true">↔</span><div><strong>Se adapta a la posición</strong><p>No aparece una inclinación dominante hacia forzar, simplificar o jugar con calma cuando dispone de varias alternativas buenas.</p></div></div>`;
+
+    const usablePhases = snapshot.report.phases.filter((phase) => phase.moves >= 5 && phase.stability != null);
+    const bestStability = Math.max(...usablePhases.map((phase) => phase.stability), -Infinity);
+    const worstStability = Math.min(...usablePhases.map((phase) => phase.stability), Infinity);
+    $("#profile-engine-phases").innerHTML = snapshot.report.phases.map((phase) => {
+      const phaseLabel = phase.moves < 5 || phase.stability == null ? "Muestra insuficiente" :
+        phase.stability === bestStability && bestStability - worstStability >= 4 ? "Fase más estable" :
+        phase.stability === worstStability && bestStability - worstStability >= 4 ? "Fase a revisar" :
+        "Rendimiento estable";
+      return `<article class="${phaseLabel === "Fase a revisar" ? "watchout" : phaseLabel === "Fase más estable" ? "strength" : ""}">
+        <span>${escapeHtml(enginePhaseName(phase.id))}</span>
+        <strong>${escapeHtml(phaseLabel)}</strong>
+        <small>${phase.stability == null ? "Sin datos" : `${formatNumber(phase.stability)}% de decisiones estables · ${phase.moves} analizadas`}</small>
+      </article>`;
+    }).join("");
+
+    const findings = $("#profile-engine-findings");
+    const hasFindings = snapshot.report.strengths.length || snapshot.report.watchouts.length;
+    findings.hidden = !hasFindings;
+    findings.innerHTML = hasFindings ? `
+      <section><h5>${escapeHtml(t("profile.engineStrengths"))}</h5>${renderEngineFindings(snapshot.report.strengths)}</section>
+      <section><h5>${escapeHtml(t("profile.engineWatchouts"))}</h5>${renderEngineFindings(snapshot.report.watchouts)}</section>
+    ` : "";
+    const profile = state.stats?.player_profile;
+    if (profile) {
+      renderProfileTakeaways(profile, snapshot);
+      renderPreparationPlan(profile.preparation_plan || [], snapshot.report.plan || []);
+    }
+  }
+
+  function renderEngineFindings(findings) {
+    return findings.map((finding) => `
+      <article class="profile-engine-finding">
+        <h6>${escapeHtml(finding.title)}</h6>
+        <p>${escapeHtml(finding.summary || finding.text)}</p>
+      </article>
+    `).join("") || `<p class="profile-engine-empty">${escapeHtml(t("profile.engineNeedsEvidence"))}</p>`;
+  }
+
+  function renderEvidencePosition(evidence) {
+    if (!evidence?.source || !evidence?.gameId) return "";
+    return `<button type="button" class="profile-position-button" data-profile-source="${escapeHtml(evidence.source)}" data-profile-game-id="${escapeHtml(evidence.gameId)}" data-profile-ply="${Number(evidence.ply) || 0}">${escapeHtml(t("profile.viewPosition"))}</button>`;
+  }
+
+  function bindEvidencePositions(root) {
+    $$(".profile-position-button", root).forEach((button) => {
+      button.addEventListener("click", () => openGame(
+        button.dataset.profileSource,
+        button.dataset.profileGameId,
+        { ply: Number(button.dataset.profilePly) || 0 },
+      ));
+    });
+  }
+
+  function enginePhaseName(id) {
+    return ({ opening: t("profile.opening"), middlegame: t("profile.middlegame"), endgame: t("profile.endgame") })[id] || id;
+  }
+
+  function togglePlayerEngineProfile() {
+    const snapshot = playerEngineProfile.getSnapshot();
+    if (snapshot.running) playerEngineProfile.pause();
+    else playerEngineProfile.start({ onUpdate: renderEngineProfile });
+  }
+
+  function selectProfileGames(gameIds, label) {
+    state.openingFilter = {
+      game_ids: gameIds,
+      opening: label,
+      color: "all",
+    };
+    renderGames();
+    $("#partidas").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function bindRovingTabs(selector) {
+    const tabs = $$(selector);
+    tabs.forEach((tab, index) => {
+      tab.addEventListener("keydown", (event) => {
+        let target = null;
+        if (["ArrowRight", "ArrowDown"].includes(event.key)) target = tabs[(index + 1) % tabs.length];
+        else if (["ArrowLeft", "ArrowUp"].includes(event.key)) target = tabs[(index - 1 + tabs.length) % tabs.length];
+        else if (event.key === "Home") target = tabs[0];
+        else if (event.key === "End") target = tabs[tabs.length - 1];
+        if (!target) return;
+        event.preventDefault();
+        target.click();
+        target.focus();
+      });
+    });
   }
 
   function decisionMapForSelectedColor() {
@@ -776,7 +1108,7 @@
     if (!sampleQuery) return;
     closeDialog("combine-dialog");
     try {
-      const result = await combineProfilesStream({
+      const result = await combineProfiles({
         lichess_username: lichess || null,
         chesscom_username: chesscom || null,
       }, t("loading.combiningProfiles"), sampleQuery);
@@ -1016,39 +1348,26 @@
     return params.toString();
   }
 
-  async function combineProfilesStream(payload, title, sampleQuery) {
+  async function combineProfiles(payload, title, sampleQuery) {
     let steps = createCombineSteps([
       ...(payload.lichess_username ? ["lichess"] : []),
       ...(payload.chesscom_username ? ["chess.com"] : []),
     ]);
-    let liveProgress = false;
-    const staged = startStagedCombineProgress(steps, title, () => liveProgress);
+    const staged = startStagedCombineProgress(steps, title, () => false);
     paintCombineProgress(title, steps, 10);
     try {
-      return await apiNdjson(`/players/combined?${sampleQuery}&stream=true`, {
+      const result = await api(`/players/combined?${sampleQuery}`, {
         method: "POST",
         body: JSON.stringify(payload),
-      }, (event) => {
-        const isProgressEvent = event?.type && event.type !== "done" && event.type !== "error";
-        if (isProgressEvent) {
-          liveProgress = true;
-        }
-        if (isProgressEvent || event?.type === "done" || event?.type === "error") {
-          staged.stop();
-        }
-        // Keep merge as a brief final beat: ignore early merge events from the
-        // stream and only show it right before the finished dossier.
-        if (event?.type === "merge") return;
-        if (event?.type === "done") {
-          steps = markMergeLoading(cloneCombineSteps(steps));
-          paintCombineProgress(title, steps, 94);
-        }
-        steps = applyCombineEvent(steps, event).map((step) => ({
-          ...step
-        }));
-        const progress = event?.type === "done" ? 100 : null;
-        paintCombineProgress(title, steps, progress);
       });
+      staged.stop();
+      steps = markMergeLoading(cloneCombineSteps(steps));
+      paintCombineProgress(title, steps, 94);
+      steps = finalizeCombineSteps(steps, {
+        dataset: result.dataset,
+      });
+      paintCombineProgress(title, steps, 100);
+      return result;
     } finally {
       staged.stop();
     }

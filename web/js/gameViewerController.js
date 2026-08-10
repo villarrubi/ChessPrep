@@ -87,8 +87,8 @@
       syncEngineSettingInputs();
     }
 
-    open(source, gameId) {
-      return openGame(source, gameId);
+    open(source, gameId, options = {}) {
+      return openGame(source, gameId, options);
     }
 
     close() {
@@ -161,14 +161,14 @@
     };
   }
 
-  async function openGame(source, gameId) {
+  async function openGame(source, gameId, { ply = 0 } = {}) {
     setLoading(true, t("loading.placingPieces"));
     try {
       resetViewerAnalysis({
         keepToggle: false
       });
       state.viewerGame = await api(`/games/${encodeURIComponent(source)}/${encodeURIComponent(gameId)}`);
-      state.ply = 0;
+      state.ply = Math.max(0, Math.min(Number(ply) || 0, state.viewerGame.moves_uci.length));
       renderViewerMeta();
       renderMoves();
       try {

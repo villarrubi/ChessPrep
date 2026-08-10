@@ -9,6 +9,7 @@ from api.app.services.pgn import (
     opening_move_path,
     opening_move_sequence,
 )
+from api.app.services.player_profile import calculate_player_profile
 
 
 def outcome_for_player(game: NormalizedGame) -> str:
@@ -290,5 +291,6 @@ def calculate_stats(
         "opening_decisions": {
             color: _opening_decision_map(selected, color) for color in ("white", "black")
         },
+        "player_profile": calculate_player_profile(selected),
         "recent_form": form,
     }

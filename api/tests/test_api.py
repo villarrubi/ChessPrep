@@ -43,6 +43,7 @@ def test_demo_is_synthetic_and_only_loads_after_an_explicit_action():
 def test_online_search_exposes_bounded_sample_controls():
     index = client.get("/").text
     controller = client.get("/js/dossierController.js").text
+    styles = client.get("/styles.css").text
 
     assert 'id="online-game-limit"' in index
     assert '<option value="100" selected>100 partidas</option>' in index
@@ -51,6 +52,13 @@ def test_online_search_exposes_bounded_sample_controls():
     assert '[50, 100, 200].includes(selectedLimit)' in controller
     assert 'params.set("from", dateFrom)' in controller
     assert 'params.set("to", dateTo)' in controller
+    assert 'api(`/players/combined?${sampleQuery}`' in controller
+    assert 'apiNdjson(`/players/combined?${sampleQuery}&stream=true`' not in controller
+    assert '.search-mode-panel { width: 100%; max-width: 680px; height: 205px;' in styles
+    assert '#search-panel-online { height:' not in styles
+    assert '.search-mode-panel { height: 320px; }' in styles
+    assert '/styles.css?v=20260810-search-fixes' in index
+    assert '/js/dossierController.js?v=20260810-search-fixes' in index
 
 
 def test_combined_sample_balances_and_redistributes_the_total_limit():
@@ -118,6 +126,7 @@ def test_frontend_feature_modules_are_served():
         "dossierController.js",
         "eloCalculator.js",
         "gameViewerController.js",
+        "playerEngineProfile.js",
         "otbController.js",
         "pgnImportController.js",
     )
@@ -208,7 +217,7 @@ def test_language_switcher_and_elo_calculator_are_available():
     assert 'id="language-button"' in index
     assert 'id="language-menu"' in index
     assert index.count('data-language="') == 5
-    assert "/i18n.js?v=20260809-ui-controls" in index
+    assert "/i18n.js?v=20260809-final-profile" in index
     assert 'const STORAGE_KEY = "chessprep_language";' in translations
     assert '{ code: "es"' in translations
     assert '{ code: "en"' in translations
@@ -451,6 +460,8 @@ def test_repertoire_map_distinguishes_player_and_opponent_decisions():
 
     assert 'data-repertoire-view="decisions"' in index
     assert 'data-repertoire-view="openings"' in index
+    assert 'data-repertoire-view="analysis"' in index
+    assert 'id="player-analysis-view"' in index
     assert 'data-decision-color="white"' in index
     assert 'aria-pressed="true" data-decision-color="white"' in index
     assert 'aria-pressed="true" data-opening-color="all"' in index
@@ -458,6 +469,7 @@ def test_repertoire_map_distinguishes_player_and_opponent_decisions():
     assert 'id="decision-breadcrumbs"' in index
     assert 'id="decision-choices"' in index
     assert "function renderDecisionMap()" in script
+    assert "function renderPlayerProfile()" in script
     assert "const previousPath = path.slice(0, -1);" in script
     assert "title: move || opening" in script
     assert "const remainder = current?.other_continuations || map.unclassified_branch;" in script
@@ -475,6 +487,55 @@ def test_repertoire_map_distinguishes_player_and_opponent_decisions():
     assert ".decision-back:focus-visible" in styles
     assert ".actor-marker.player" in styles
     assert ".actor-marker.opponent" in styles
+
+
+def test_player_profile_hides_partial_results_and_does_not_persist_analysis():
+    index = client.get("/").text
+    script = client.get("/js/playerEngineProfile.js").text
+    controller = client.get("/js/dossierController.js").text
+    service_worker = client.get("/sw.js").text
+    styles = client.get("/styles.css").text
+
+    assert 'id="profile-engine-toggle"' in index
+    assert 'id="profile-engine-progress" role="progressbar"' in index
+    assert 'id="profile-style-choices"' in index
+    assert 'id="profile-analysis-loading"' in index
+    assert 'id="profile-analysis-content"' in index
+    assert 'id="profile-engine-results" hidden' in index
+    assert 'id="profile-takeaway-style"' in index
+    assert "Qué elige y qué le plantean" in index
+    assert 'id="profile-print"' not in index
+    assert 'class="profile-data-disclosure"' not in index
+    assert 'class="profile-engine-method"' not in index
+    assert 'id="profile-preparation-plan"' in index
+    assert "/js/playerEngineProfile.js?v=20260809-final-profile" in index
+    assert "const PROFILE_NODES = 30000;" in script
+    assert "const PROFILE_MULTIPV = 5;" in script
+    assert "const EQUIVALENT_WIN_LOSS = 3;" in script
+    assert "multipv: PROFILE_MULTIPV" in script
+    assert "this.engine.analyzeMove(fen, playedUci" in script
+    assert "wilsonInterval" in script
+    assert "routineRecapture" in script
+    assert 'const complete = snapshot.status === "complete";' in controller
+    assert 'if (!complete) return;' in controller
+    assert '$("#profile-analysis-content").hidden = showLoading;' in controller
+    assert "phase.stability" in controller
+    assert 'function firstOpeningChoices(color, actor)' in controller
+    assert 'firstOpeningChoices(color, "player")' in controller
+    assert 'firstOpeningChoices(color, "opponent")' in controller
+    assert "function renderProfileTakeaways" in controller
+    assert "this.summaries.length" in script
+    assert "visibilitychange" in script
+    assert "localStorage.setItem" not in script
+    assert "indexedDB.open" not in script
+    assert "profile-trait-bar" not in controller
+    assert "/100" not in controller
+    assert "bindRovingTabs('[data-repertoire-view]')" in controller
+    assert "window.print()" not in controller
+    assert "putInCache(event.request, response)" not in service_worker.split(
+        'if (url.pathname.startsWith("/api/"))', 1
+    )[1].split("// Assets", 1)[0]
+    assert "@media print" in styles
 
 
 def test_pgn_import_excludes_non_standard_variants():

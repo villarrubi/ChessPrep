@@ -19,6 +19,73 @@ def test_mode_and_opening_aggregations():
     assert sum(item["games"] for item in stats["by_color"]) == 12
 
 
+def test_player_profile_is_traceable_cautious_and_phase_aware():
+    stats = calculate_stats(ensure_demo().games, Mode.COMBINED)
+    profile = stats["player_profile"]
+
+    assert profile["version"] == "observable-patterns-v3"
+    assert profile["sample_size"] == stats["sample_size"]
+    assert profile["headline"]
+    assert profile["narrative"]
+    assert profile["confidence"]["level"] in {"alta", "media", "baja"}
+    assert profile["confidence"]["usable_games"] == profile["analysed_games"]
+    assert "score" not in profile["confidence"]
+    assert {pattern["id"] for pattern in profile["observed_patterns"]} == {
+        "forcing_moves",
+        "development",
+        "castling",
+        "queen_trades",
+        "material_imbalance",
+        "eco_depth",
+        "repertoire",
+    }
+    assert "traits" not in profile
+    assert all("score" not in pattern for pattern in profile["observed_patterns"])
+    assert all(pattern["evidence"] for pattern in profile["observed_patterns"])
+    assert all(pattern["denominator"] is not None for pattern in profile["observed_patterns"])
+    assert [phase["id"] for phase in profile["phases"]] == [
+        "opening",
+        "middlegame",
+        "endgame",
+    ]
+    assert {opening["color"] for opening in profile["openings"]} == {
+        "white",
+        "black",
+    }
+    assert any("Stockfish" in limitation for limitation in profile["limitations"])
+    assert profile["preparation_plan"]
+    assert all("evidence_game_ids" in item for item in profile["patterns"])
+    assert all("confidence" in item for item in profile["questions"])
+    assert all(opening["line_tendency"] for opening in profile["openings"])
+
+
+def test_player_profile_handles_an_empty_filtered_sample():
+    profile = calculate_stats([], Mode.COMBINED)["player_profile"]
+
+    assert profile["sample_size"] == 0
+    assert profile["confidence"]["level"] == "baja"
+    assert all(pattern["value"] == 0 for pattern in profile["observed_patterns"])
+    assert all(opening["games"] == 0 for opening in profile["openings"])
+
+
+def test_player_profile_does_not_infer_style_from_results_without_moves():
+    result_only = ensure_demo().games[0].model_copy(
+        update={"moves": [], "moves_uci": [], "fens": [], "ply_count": 0}
+    )
+
+    profile = calculate_stats([result_only])["player_profile"]
+
+    assert profile["sample_size"] == 1
+    assert profile["analysed_games"] == 0
+    assert profile["confidence"]["move_coverage_pct"] == 0
+    assert profile["descriptors"] == ["jugadas no disponibles"]
+    by_id = {pattern["id"]: pattern for pattern in profile["observed_patterns"]}
+    assert by_id["forcing_moves"]["value"] == 0
+    assert by_id["development"]["value"] == 0
+    assert by_id["castling"]["value"] == 0
+    assert "traits" not in profile
+
+
 def test_unclassified_opening_keeps_null_eco_for_exact_filtering():
     game = ensure_demo().games[0].model_copy(
         update={"eco": None, "opening": "Apertura sin clasificar"}

@@ -303,6 +303,94 @@
     }
   }
 
+  Object.assign(es, {
+    "profile.title": "Análisis", "profile.emptyTitle": "Análisis no disponible", "profile.emptyText": "Carga partidas con jugadas para construir el perfil.", "profile.confidence": "Cobertura {level} · {usable}/{sample} partidas", "profile.low": "baja", "profile.viewEvidence": "Ver evidencia", "profile.differentOpenings": "aperturas", "profile.bookMoves": "jugadas ECO", "profile.confidenceShort": "Evidencia"
+  });
+  Object.assign(en, {
+    "profile.title": "Analysis", "profile.emptyTitle": "Analysis unavailable", "profile.emptyText": "Load games with moves to build the profile.", "profile.confidence": "{level} coverage · {usable}/{sample} games", "profile.low": "low", "profile.viewEvidence": "View evidence", "profile.differentOpenings": "openings", "profile.bookMoves": "ECO moves", "profile.confidenceShort": "Evidence"
+  });
+  Object.assign(de, {
+    "profile.title": "Analyse", "profile.emptyTitle": "Analyse nicht verfügbar", "profile.emptyText": "Lade Partien mit Zügen, um das Profil zu erstellen.", "profile.confidence": "Abdeckung {level} · {usable}/{sample} Partien", "profile.low": "niedrig", "profile.viewEvidence": "Belege anzeigen", "profile.differentOpenings": "Eröffnungen", "profile.bookMoves": "ECO-Züge", "profile.confidenceShort": "Evidenz"
+  });
+  Object.assign(fr, {
+    "profile.title": "Analyse", "profile.emptyTitle": "Analyse indisponible", "profile.emptyText": "Chargez des parties avec leurs coups pour créer le profil.", "profile.confidence": "Couverture {level} · {usable}/{sample} parties", "profile.low": "faible", "profile.viewEvidence": "Voir les preuves", "profile.differentOpenings": "ouvertures", "profile.bookMoves": "coups ECO", "profile.confidenceShort": "Preuves"
+  });
+  Object.assign(it, {
+    "profile.title": "Analisi", "profile.emptyTitle": "Analisi non disponibile", "profile.emptyText": "Carica partite con le mosse per creare il profilo.", "profile.confidence": "Copertura {level} · {usable}/{sample} partite", "profile.low": "bassa", "profile.viewEvidence": "Mostra evidenze", "profile.differentOpenings": "aperture", "profile.bookMoves": "mosse ECO", "profile.confidenceShort": "Evidenza"
+  });
+
+  Object.assign(es, {
+    "profile.viewGames": "Ver partidas",
+    "profile.viewPosition": "Ver posición crítica",
+    "profile.observed": "Patrón observable",
+    "profile.engineBacked": "Contraste de Stockfish",
+    "profile.planEmpty": "Amplía la muestra para obtener prioridades de preparación.",
+    "profile.engineKicker": "Stockfish local · temporal",
+    "profile.engineTitle": "Descubrir cómo toma decisiones",
+    "profile.engineDescription": "Analiza sus partidas en este dispositivo y responde con palabras: cuándo presiona, cuándo mejora piezas, si busca cambios y cómo reacciona cuando el rival lleva la iniciativa.",
+    "profile.engineIdle": "Listo para analizar en el navegador.",
+    "profile.engineRunning": "Analizando {gamesDone}/{gamesTotal} partidas · {movesDone}/{movesTotal} decisiones propias…",
+    "profile.enginePaused": "Análisis pausado · {movesDone}/{movesTotal} decisiones completadas.",
+    "profile.engineComplete": "Análisis terminado · {games} partidas y {moves} decisiones propias.",
+    "profile.engineError": "No se pudo continuar: {error}",
+    "profile.startEngine": "Analizar todas las partidas",
+    "profile.pause": "Pausar",
+    "profile.resume": "Reanudar",
+    "profile.completed": "Análisis terminado",
+    "profile.print": "Imprimir informe",
+    "profile.decisions": "decisiones",
+    "profile.errors": "errores",
+    "profile.engineStrengths": "Lo que hace bien",
+    "profile.engineWatchouts": "Dónde se le puede incomodar",
+    "profile.engineNeedsEvidence": "Aún no hay decisiones suficientes.",
+    "profile.opening": "Apertura",
+    "profile.middlegame": "Medio juego",
+    "profile.endgame": "Final",
+    "profile.planKicker": "Aplicación práctica",
+    "profile.planTitle": "Qué preparar contra este jugador",
+    "profile.planNote": "Tres prioridades, de mayor a menor impacto",
+    "profile.sampleAria": "Muestra del análisis",
+    "profile.directCount": "Dato directo",
+    "profile.styleDiagnostics": "{evaluated} posiciones evaluadas · {comparable} con elecciones comparables · {noChoice} sin contraste de estilo · {excluded} excluidas por calidad",
+    "profile.styleDiagnosticsEmpty": "Aún no se han comparado posiciones.",
+    "profile.ofComparable": "de {count} oportunidades",
+    "profile.interval": "Intervalo 95%:",
+    "profile.mostFrequent": "Más frecuente",
+    "profile.alternativeLine": "Otra línea habitual",
+    "profile.repertoireSample": "Repertorio de la muestra",
+    "profile.viewOpeningData": "Ver frecuencia y resultados",
+    "profile.styleEvidenceReady": "La muestra ya permite una lectura estable.",
+    "profile.styleAnalysing": "Buscando patrones fiables",
+    "profile.stylePending": "Todavía no se ha analizado el estilo",
+    "profile.styleAnalysingDetail": "La conclusión aparecerá cuando se repita una elección suficiente veces.",
+    "profile.stylePendingDetail": "Pulsa «Analizar muestra» para distinguir preferencias de movimientos forzados.",
+    "profile.preAnalysisNarrative": "Esta primera lectura resume lo que se repite en sus partidas sin convertir jaques, capturas o resultados en una personalidad. El análisis local añadirá una conclusión clara sobre sus decisiones.",
+    "profile.openingTakeawayDetail": "Las ramas y alternativas aparecen más abajo, separadas por color.",
+    "profile.noClearPattern": "Sin patrón dominante todavía",
+    "profile.enginePatternDetail": "Patrón confirmado al comparar la calidad de sus decisiones.",
+    "profile.samplePatternDetail": "Hecho que se repite en las partidas cargadas; todavía no describe su estilo.",
+    "profile.noClearTarget": "Sin objetivo claro todavía",
+    "profile.engineTargetDetail": "Es el contexto donde Stockfish detecta más margen para incomodarle.",
+    "profile.sampleTargetDetail": "Dato útil para orientar el análisis, pendiente de confirmación posicional.",
+    "profile.usuallyChooses": "Suele elegirlo",
+    "profile.usuallyAvoids": "Suele elegir la otra vía",
+    "profile.noFixedPreference": "Sin preferencia fija",
+    "profile.whyConclusion": "Por qué lo decimos",
+    "profile.choiceEvidence": "Lo eligió en {chosen} de {count} oportunidades comparables. Intervalo estimado: {low}–{high}%.",
+    "profile.findingPatterns": "Buscando una repetición clara…",
+    "profile.findingPatternsDetail": "Los patrones aparecerán aquí al alcanzar evidencia suficiente.",
+    "profile.noStyleYet": "El estilo aún no está analizado",
+    "profile.noStyleYetDetail": "Inicia el análisis local para obtener conclusiones; los números insuficientes permanecerán ocultos."
+  });
+  Object.assign(en, {
+    "profile.viewGames": "View games", "profile.viewPosition": "View critical position", "profile.observed": "Observable pattern", "profile.engineBacked": "Stockfish evidence", "profile.planEmpty": "Expand the sample to obtain preparation priorities.", "profile.engineKicker": "Local Stockfish · temporary", "profile.engineTitle": "Discover how they make decisions", "profile.engineDescription": "Analyses their games on this device and answers in plain language: when they apply pressure, improve pieces, seek exchanges and react to the opponent's initiative.", "profile.engineIdle": "Ready to analyse in the browser.", "profile.engineRunning": "Analysing {gamesDone}/{gamesTotal} games · {movesDone}/{movesTotal} player decisions…", "profile.enginePaused": "Analysis paused · {movesDone}/{movesTotal} decisions complete.", "profile.engineComplete": "Analysis complete · {games} games and {moves} player decisions.", "profile.engineError": "Could not continue: {error}", "profile.startEngine": "Analyse sample", "profile.pause": "Pause", "profile.resume": "Resume", "profile.completed": "Analysis complete", "profile.print": "Print report", "profile.decisions": "decisions", "profile.errors": "errors", "profile.engineStrengths": "What works well", "profile.engineWatchouts": "Where to challenge them", "profile.engineNeedsEvidence": "There are not enough decisions yet.", "profile.opening": "Opening", "profile.middlegame": "Middlegame", "profile.endgame": "Endgame", "profile.planKicker": "Practical use", "profile.planTitle": "What to prepare against this player", "profile.planNote": "Three priorities, from highest to lowest impact", "profile.sampleAria": "Analysis sample", "profile.directCount": "Direct count", "profile.styleDiagnostics": "{evaluated} positions evaluated · {comparable} with comparable choices · {noChoice} without a style contrast · {excluded} excluded by move quality", "profile.styleDiagnosticsEmpty": "No positions have been compared yet.", "profile.ofComparable": "of {count} opportunities", "profile.interval": "95% interval:", "profile.mostFrequent": "Most frequent", "profile.alternativeLine": "Another regular line", "profile.repertoireSample": "Sample repertoire", "profile.viewOpeningData": "View frequency and results", "profile.styleEvidenceReady": "The sample now supports a stable reading.", "profile.styleAnalysing": "Looking for reliable patterns", "profile.stylePending": "Playing style has not been analysed yet", "profile.styleAnalysingDetail": "The conclusion will appear after a choice repeats often enough.", "profile.stylePendingDetail": "Select ‘Analyse sample’ to separate preferences from forced moves.", "profile.preAnalysisNarrative": "This first reading summarises what repeats in the games without turning checks, captures or results into a personality. Local analysis will add a clear conclusion about their decisions.", "profile.openingTakeawayDetail": "Branches and alternatives appear below, separated by colour.", "profile.noClearPattern": "No dominant pattern yet", "profile.enginePatternDetail": "Pattern confirmed by comparing decision quality.", "profile.samplePatternDetail": "A fact repeated in the loaded games; it does not describe style yet.", "profile.noClearTarget": "No clear target yet", "profile.engineTargetDetail": "This is where Stockfish finds the most room to challenge them.", "profile.sampleTargetDetail": "A useful lead, pending positional confirmation.", "profile.usuallyChooses": "Usually chooses it", "profile.usuallyAvoids": "Usually chooses the other route", "profile.noFixedPreference": "No fixed preference", "profile.whyConclusion": "Why we say this", "profile.choiceEvidence": "Chosen in {chosen} of {count} comparable opportunities. Estimated interval: {low}–{high}%.", "profile.findingPatterns": "Looking for a clear repetition…", "profile.findingPatternsDetail": "Patterns will appear here once the evidence is sufficient.", "profile.noStyleYet": "Style has not been analysed yet", "profile.noStyleYetDetail": "Start the local analysis to get conclusions; insufficient numbers will remain hidden."
+  });
+  for (const translation of [de, fr, it]) {
+    for (const [key, value] of Object.entries(es)) {
+      if (!(key in translation)) translation[key] = value;
+    }
+  }
+
   const TRANSLATIONS = { es, en, de, fr, it };
   const BINDINGS = [
     ["attr", "meta[name='description']", "meta.description", "content"], ["attr", ".site-header .brand", "header.home", "aria-label"], ["text", "#elo-calculator .header-action-label", "header.elo"], ["attr", "#language-button", "header.language", "aria-label"], ["attr", "#language-menu", "header.languageMenu", "aria-label"],
@@ -317,7 +405,8 @@
     ["text", "#analisis > .section-heading-row .section-kicker", "workbench.kicker"], ["text", "#analisis > .section-heading-row h2", "workbench.title"], ["attr", ".pace-switch", "workbench.pace", "aria-label"], ["text", "[data-pace='global']", "pace.global"], ["text", "[data-pace='rapid']", "pace.rapid"], ["text", "[data-pace='classical']", "pace.classical"],
     ["text", "#player-name", "player.default"], ["text", "#player-meta", "player.waiting"], ["attr", ".verified-mark", "player.verified", "title"], ["text", "#trace-summary > div:nth-child(1) span", "trace.sample"], ["text", "#trace-summary > div:nth-child(2) span", "trace.period"], ["text", "#trace-summary > div:nth-child(3) span", "trace.sources"], ["attr", "#refresh-player", "trace.refresh", "title"], ["attr", "#refresh-player", "trace.refresh", "aria-label"],
     ["text", ".metric-featured .metric-top > span:first-child", "common.globalScore"], ["text", ".metric-card:nth-child(2) .metric-top > span:first-child", "metrics.white"], ["text", ".metric-card:nth-child(3) .metric-top > span:first-child", "metrics.black"], ["text", ".metric-card:nth-child(4) .metric-top > span:first-child", "metrics.recent"], ["attr", "#form-dots", "metrics.recentAria", "aria-label"],
-    ["text", ".openings-panel .panel-eyebrow", "openings.kicker"], ["text", "#repertoire-title", "repertoire.decisionMap"], ["attr", ".repertoire-view-switch", "repertoire.viewAria", "aria-label"], ["text", "[data-repertoire-view='decisions']", "repertoire.viewDecisions"], ["text", "[data-repertoire-view='openings']", "repertoire.viewOpenings"], ["attr", "#decision-map-view .color-filter", "repertoire.colorAria", "aria-label"], ["text", "[data-decision-color='white']", "filter.white"], ["text", "[data-decision-color='black']", "filter.black"], ["attr", "#decision-breadcrumbs", "repertoire.pathAria", "aria-label"], ["text", ".decision-note", "repertoire.note"], ["attr", "#openings-table-view .color-filter", "openings.filterAria", "aria-label"], ["text", "[data-opening-color='all']", "filter.allF"], ["text", "[data-opening-color='white']", "filter.white"], ["text", "[data-opening-color='black']", "filter.black"], ["text", ".openings-panel th:nth-child(1)", "openings.opening"], ["text", ".openings-panel th:nth-child(2)", "openings.color"], ["text", ".openings-panel th:nth-child(3)", "openings.games"], ["text", ".openings-panel th:nth-child(4)", "openings.score"], ["text", ".openings-note", "openings.note"],
+    ["text", ".openings-panel .panel-eyebrow", "openings.kicker"], ["text", "#repertoire-title", "repertoire.decisionMap"], ["attr", ".repertoire-view-switch", "repertoire.viewAria", "aria-label"], ["text", "[data-repertoire-view='decisions']", "repertoire.viewDecisions"], ["text", "[data-repertoire-view='openings']", "repertoire.viewOpenings"], ["text", "[data-repertoire-view='analysis']", "profile.title"], ["attr", "#decision-map-view .color-filter", "repertoire.colorAria", "aria-label"], ["text", "[data-decision-color='white']", "filter.white"], ["text", "[data-decision-color='black']", "filter.black"], ["attr", "#decision-breadcrumbs", "repertoire.pathAria", "aria-label"], ["text", ".decision-note", "repertoire.note"], ["attr", "#openings-table-view .color-filter", "openings.filterAria", "aria-label"], ["text", "[data-opening-color='all']", "filter.allF"], ["text", "[data-opening-color='white']", "filter.white"], ["text", "[data-opening-color='black']", "filter.black"], ["text", ".openings-panel th:nth-child(1)", "openings.opening"], ["text", ".openings-panel th:nth-child(2)", "openings.color"], ["text", ".openings-panel th:nth-child(3)", "openings.games"], ["text", ".openings-panel th:nth-child(4)", "openings.score"], ["text", ".openings-note", "openings.note"],
+    ["text", ".profile-engine-kicker", "profile.engineKicker"], ["text", "#profile-engine-title", "profile.engineTitle"], ["text", "#profile-engine-description", "profile.engineDescription"], ["text", "#profile-engine-toggle", "profile.startEngine"], ["text", ".profile-plan .profile-section-heading span", "profile.planKicker"], ["text", "#profile-plan-title", "profile.planTitle"], ["text", ".profile-plan .profile-section-heading small", "profile.planNote"], ["attr", "#profile-sample-context", "profile.sampleAria", "aria-label"],
     ["text", ".color-panel .panel-eyebrow", "balance.kicker"], ["text", ".color-panel h3", "balance.title"], ["html", ".color-panel .legend span:nth-child(1)", "legend.win"], ["html", ".color-panel .legend span:nth-child(2)", "legend.draw"], ["html", ".color-panel .legend span:nth-child(3)", "legend.loss"], ["html", "#sample-note p", "sample.note"],
     ["text", "#partidas .section-kicker", "archive.kicker"], ["text", "#partidas h2", "archive.title"], ["attr", "#game-search", "archive.search", "placeholder"], ["attr", "#filter-color", "archive.colorAria", "aria-label"], ["attr", "#filter-result", "archive.resultAria", "aria-label"], ["text", "#filter-color option[value='all']", "archive.anyColor"], ["text", "#filter-color option[value='white']", "filter.white"], ["text", "#filter-color option[value='black']", "filter.black"], ["text", "#filter-result option[value='all']", "archive.anyResult"], ["text", "#filter-result option[value='win']", "outcome.win"], ["text", "#filter-result option[value='draw']", "outcome.draw"], ["text", "#filter-result option[value='loss']", "outcome.loss"], ["text", "#clear-filters", "archive.clear"], ["text", "#games-empty h3", "archive.emptyTitle"], ["text", "#games-empty p", "archive.emptyText"],
     ["text", ".pgn-import-copy .section-kicker", "pgn.kicker"], ["html", "#pgn-import-title", "pgn.title"], ["text", ".pgn-import-copy > p:last-child", "pgn.lede"], ["text", ".drop-zone strong", "pgn.drop"], ["text", ".drop-zone small", "pgn.limit"], ["attr", "#remove-pgn-file", "pgn.removeAria", "aria-label"], ["text", "#remove-pgn-file", "pgn.remove"], ["html", "#submit-import", "pgn.process"],

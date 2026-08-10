@@ -15,7 +15,7 @@
     <title>ChessPrep — Conoce el tablero antes de sentarte</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%2310231f%22/><text x=%2232%22 y=%2246%22 text-anchor=%22middle%22 font-size=%2242%22 fill=%22%23f4f1e9%22>♞</text></svg>" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="stylesheet" href="/styles.css?v=20260809-ui-controls" />
+    <link rel="stylesheet" href="/styles.css?v=20260810-search-fixes" />
   </head>
   <body>
     <div class="page-shell">
@@ -57,7 +57,7 @@
             </p>
             <div class="search-mode-tabs" role="tablist" aria-label="Tipo de partidas que quieres buscar">
               <button class="active" id="search-mode-online" type="button" role="tab" aria-selected="true" aria-controls="search-panel-online" data-search-mode="online"><span class="search-mode-symbol online" aria-hidden="true"><i></i><i></i></span><span><strong>Online</strong><small>Lichess + Chess.com</small></span></button>
-              <button id="search-mode-otb" type="button" role="tab" aria-selected="false" aria-controls="search-panel-otb" data-search-mode="otb"><span class="search-mode-symbol otb" aria-hidden="true">♙</span><span><strong>Presencial (OTB)</strong><small>FIDE + Info64</small></span></button>
+              <button id="search-mode-otb" type="button" role="tab" aria-selected="false" aria-controls="search-panel-otb" tabindex="-1" data-search-mode="otb"><span class="search-mode-symbol otb" aria-hidden="true">♙</span><span><strong>Presencial (OTB)</strong><small>FIDE + Info64</small></span></button>
             </div>
             <div class="search-mode-panel" id="search-panel-online" role="tabpanel" aria-labelledby="search-mode-online">
               <form class="search-form" id="player-search" role="search">
@@ -213,7 +213,8 @@
                 <div><p class="panel-eyebrow">Repertorio</p><h3 id="repertoire-title">Mapa de decisiones</h3></div>
                 <div class="repertoire-view-switch" role="tablist" aria-label="Vista del repertorio">
                   <button id="repertoire-decisions-tab" class="active" type="button" role="tab" aria-selected="true" aria-controls="decision-map-view" data-repertoire-view="decisions">Decisiones</button>
-                  <button id="repertoire-openings-tab" type="button" role="tab" aria-selected="false" aria-controls="openings-table-view" data-repertoire-view="openings">Aperturas</button>
+                  <button id="repertoire-openings-tab" type="button" role="tab" aria-selected="false" aria-controls="openings-table-view" tabindex="-1" data-repertoire-view="openings">Aperturas</button>
+                  <button id="repertoire-analysis-tab" type="button" role="tab" aria-selected="false" aria-controls="player-analysis-view" tabindex="-1" data-repertoire-view="analysis">Análisis</button>
                 </div>
               </div>
 
@@ -251,6 +252,75 @@
                   </table>
                 </div>
                 <p class="panel-footnote openings-note">Selecciona una apertura para ver las partidas que forman el dato.</p>
+              </div>
+
+              <div id="player-analysis-view" class="player-analysis-view" role="tabpanel" aria-labelledby="repertoire-analysis-tab" hidden>
+                <section id="profile-analysis-loading" class="profile-analysis-loading" aria-labelledby="profile-loading-title" hidden>
+                  <div class="profile-loading-piece" aria-hidden="true">♞</div>
+                  <span class="profile-engine-kicker">Stockfish local · análisis temporal</span>
+                  <h4 id="profile-loading-title">Analizando el estilo del jugador</h4>
+                  <p>No mostramos conclusiones parciales. El informe completo aparecerá cuando todas las partidas estén listas.</p>
+                  <div class="profile-engine-progress" id="profile-engine-progress" role="progressbar" aria-labelledby="profile-engine-status" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div><i id="profile-engine-progress-bar"></i></div>
+                    <p id="profile-engine-status" aria-live="polite">Preparando el análisis…</p>
+                  </div>
+                  <button class="button button-ghost profile-loading-action" id="profile-engine-loading-toggle" type="button">Pausar análisis</button>
+                </section>
+
+                <div id="profile-analysis-content">
+                <section class="profile-overview" aria-labelledby="profile-headline">
+                  <div class="profile-meta-line">
+                    <span>Resumen del jugador</span>
+                    <span id="profile-confidence" class="profile-confidence">Confianza pendiente</span>
+                  </div>
+                  <h4 id="profile-headline">Perfil del jugador</h4>
+                  <div id="profile-descriptors" class="profile-descriptors" aria-label="Rasgos principales"></div>
+                  <div id="profile-narrative" class="profile-narrative"></div>
+                  <div class="profile-takeaways" aria-label="Resumen práctico del jugador">
+                    <article class="profile-takeaway primary"><span>Cómo suele elegir</span><strong id="profile-takeaway-style">Pendiente de analizar</strong><p id="profile-takeaway-style-detail">Stockfish separará las preferencias reales de los movimientos forzados.</p></article>
+                    <article><span>Aperturas habituales</span><strong id="profile-takeaway-opening">Sin lectura todavía</strong><p id="profile-takeaway-opening-detail"></p></article>
+                    <article><span>Patrón útil</span><strong id="profile-takeaway-strength">Sin patrón dominante</strong><p id="profile-takeaway-strength-detail"></p></article>
+                    <article class="target"><span>Qué preparar</span><strong id="profile-takeaway-target">Pendiente de contraste</strong><p id="profile-takeaway-target-detail"></p></article>
+                  </div>
+                  <div id="profile-sample-context" class="profile-sample-context" aria-label="Muestra del análisis"></div>
+                </section>
+
+                <section class="profile-engine" aria-labelledby="profile-engine-title">
+                  <div class="profile-engine-heading">
+                    <div>
+                      <span class="profile-engine-kicker">Stockfish local · temporal</span>
+                      <h4 id="profile-engine-title">Descubrir cómo toma decisiones</h4>
+                      <p id="profile-engine-description">Analiza sus partidas en este dispositivo y responde con palabras: cuándo presiona, cuándo mejora piezas, si busca cambios y cómo reacciona cuando el rival lleva la iniciativa.</p>
+                    </div>
+                    <div class="profile-engine-actions">
+                      <button class="button button-primary profile-engine-start" id="profile-engine-toggle" type="button">Analizar todas las partidas</button>
+                    </div>
+                  </div>
+                  <div id="profile-engine-results" hidden>
+                    <div class="profile-engine-subheading">
+                      <div><span>Lectura del juego</span><h5>Las preferencias que sí destacan</h5></div>
+                      <small>Solo aparecen tendencias suficientemente claras</small>
+                    </div>
+                    <div id="profile-style-choices" class="profile-style-choices"></div>
+                    <div class="profile-engine-subheading quality-heading">
+                      <div><span>Regularidad</span><h5>Cómo rinde en cada fase</h5></div>
+                      <small>Porcentaje de decisiones que mantuvieron la posición</small>
+                    </div>
+                    <div id="profile-engine-phases" class="profile-engine-phases"></div>
+                    <div id="profile-engine-findings" class="profile-engine-findings" hidden></div>
+                  </div>
+                </section>
+
+                <section class="profile-section profile-plan" aria-labelledby="profile-plan-title">
+                  <div class="profile-section-heading"><div><span>Aplicación práctica</span><h4 id="profile-plan-title">Qué preparar contra este jugador</h4></div><small>Tres prioridades, de mayor a menor impacto</small></div>
+                  <div id="profile-preparation-plan" class="profile-preparation-plan"></div>
+                </section>
+
+                <section class="profile-section" aria-labelledby="profile-openings-title">
+                  <div class="profile-section-heading"><div><span>Repertorio observado</span><h4 id="profile-openings-title">Qué elige y qué le plantean</h4></div><small>Separamos sus decisiones de las del rival</small></div>
+                  <div id="profile-openings" class="profile-opening-grid"></div>
+                </section>
+                </div>
               </div>
             </article>
 
@@ -622,15 +692,16 @@
     </div>
     <div class="toast-region" id="toast-region" aria-live="polite"></div>
 
-    <script src="/i18n.js?v=20260809-ui-controls" defer></script>
+    <script src="/i18n.js?v=20260809-final-profile" defer></script>
     <script src="/js/storage.js?v=20260803-pwa-storage1" defer></script>
     <script src="/js/moveQuality.js?v=20260807-best-color" defer></script>
-    <script src="/js/stockfishEngine.js?v=20260807-best-color" defer></script>
+    <script src="/js/stockfishEngine.js?v=20260809-multipv-profile" defer></script>
     <script src="/js/gameAnalysis.js?v=20260807-best-color" defer></script>
+    <script src="/js/playerEngineProfile.js?v=20260809-final-profile" defer></script>
     <script src="/js/exploreMode.js?v=20260807-best-color" defer></script>
     <!-- Feature modules register their controllers; app.js composes them last. -->
     <script src="/js/gameViewerController.js?v=20260807-best-no-row" defer></script>
-    <script src="/js/dossierController.js?v=20260809-ui-controls" defer></script>
+    <script src="/js/dossierController.js?v=20260810-search-fixes" defer></script>
     <script src="/js/otbController.js?v=20260807-best-color" defer></script>
     <script src="/js/pgnImportController.js?v=20260807-best-color" defer></script>
     <script src="/js/eloCalculator.js?v=20260807-best-color" defer></script>

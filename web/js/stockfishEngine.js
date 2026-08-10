@@ -152,16 +152,23 @@
      * node budget; searching the resulting position would add one effective ply.
      */
     async evaluateMove(fen, moveUci, { nodes = DEFAULT_NODES } = {}) {
+      const result = await this.analyzeMove(fen, moveUci, { nodes });
+      return result.score;
+    }
+
+    /** Return both the comparable score and the continuation for one root move. */
+    async analyzeMove(fen, moveUci, { nodes = DEFAULT_NODES } = {}) {
       const safeNodes = clamp(nodes, MIN_NODES, MAX_NODES);
       const safeMove = String(moveUci || "").trim().toLowerCase();
       if (!/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(safeMove)) {
         throw new Error("Jugada UCI no válida");
       }
-      const cacheKey = `${ENGINE_CACHE_NAMESPACE}|move|n${safeNodes}|${safeMove}|${fen}`;
+      const cacheKey = `${ENGINE_CACHE_NAMESPACE}|move-line|n${safeNodes}|${safeMove}|${fen}`;
       return runSharedSearch(cacheKey, async () => {
         await this.init();
         return this._enqueue(async () => {
           let score = { cp: 0 };
+          let pv = [safeMove];
           let sawSearchInfo = false;
           if (this._multipv !== 1) {
             this._post("setoption name MultiPV value 1");
@@ -177,6 +184,7 @@
                 sawSearchInfo = true;
                 const parsed = parseInfoLine(line);
                 if (parsed.score) score = parsed.score;
+                if (parsed.pv?.length) pv = parsed.pv;
               }
               if (line.startsWith("bestmove ")) {
                 const move = line.split(/\s+/)[1] || "";
@@ -188,7 +196,7 @@
           } finally {
             this._searching = false;
           }
-          return score;
+          return { score, pv };
         });
       });
     }
